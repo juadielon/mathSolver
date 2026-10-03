@@ -1,4 +1,5 @@
 import ast
+import math
 import re
 
 import sympy as sp
@@ -16,6 +17,9 @@ _UNARY_OPERATORS = {
     ast.UAdd: lambda value: value,
     ast.USub: lambda value: -value,
 }
+_MAX_AST_NODES = 128
+_MAX_AST_DEPTH = 24
+_MAX_INTERMEDIATE_BITS = 2048
 
 
 class EquationInputError(ValueError):
@@ -30,18 +34,85 @@ def _normalise_expression(source: str) -> str:
     return source
 
 
+def _preflight_expression(tree: ast.AST) -> None:
+    remaining_nodes = _MAX_AST_NODES
+
+    def inspect(node: ast.AST, depth: int = 0) -> int | None:
+        nonlocal remaining_nodes
+        remaining_nodes -= 1
+        if remaining_nodes < 0 or depth > _MAX_AST_DEPTH:
+            raise EquationInputError("The equation is too complex.")
+
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+                raise EquationInputError("Only numeric constants and the variable x are supported.")
+            if isinstance(node.value, int):
+                return node.value.bit_length()
+            if not math.isfinite(node.value):
+                raise EquationInputError("Numeric constants must be finite.")
+            rational = sp.Rational(str(node.value))
+            return max(abs(rational.p).bit_length(), rational.q.bit_length())
+
+        if isinstance(node, ast.Name):
+            if node.id != "x":
+                raise EquationInputError("Only the variable x is supported in this phase.")
+            return None
+
+        if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPERATORS:
+            return inspect(node.operand, depth + 1)
+
+        if isinstance(node, ast.BinOp) and type(node.op) in _BINARY_OPERATORS:
+            if isinstance(node.op, ast.Div) and any(
+                isinstance(child, ast.Name) and child.id == "x" for child in ast.walk(node.right)
+            ):
+                raise EquationInputError("Variable denominators are not supported.")
+
+            left_bits = inspect(node.left, depth + 1)
+            right_bits = inspect(node.right, depth + 1)
+
+            if isinstance(node.op, ast.Pow):
+                if (
+                    not isinstance(node.right, ast.Constant)
+                    or isinstance(node.right.value, bool)
+                    or not isinstance(node.right.value, int)
+                ):
+                    raise EquationInputError(
+                        "Powers must be non-negative integer constants up to 8."
+                    )
+                exponent = node.right.value
+                if exponent < 0 or exponent > 8:
+                    raise EquationInputError(
+                        "Powers must be non-negative integer constants up to 8."
+                    )
+                result_bits = (left_bits or 1) * exponent
+            elif left_bits is None or right_bits is None:
+                result_bits = None
+            elif isinstance(node.op, (ast.Add, ast.Sub)):
+                result_bits = max(left_bits, right_bits) + 1
+            else:
+                result_bits = left_bits + right_bits
+
+            if result_bits is not None and result_bits > _MAX_INTERMEDIATE_BITS:
+                raise EquationInputError("The equation creates an excessively large intermediate value.")
+            return result_bits
+
+        raise EquationInputError(
+            "Use numbers, x, parentheses, and +, -, *, /, or non-negative integer powers."
+        )
+
+    inspect(tree)
+
+
 def _parse_expression(source: str) -> sp.Expr:
     try:
         parsed = ast.parse(_normalise_expression(source.strip()), mode="eval")
     except (SyntaxError, ValueError, RecursionError) as error:
         raise EquationInputError("Enter a valid mathematical expression.") from error
 
-    remaining_nodes = 128
+    _preflight_expression(parsed.body)
 
     def build(node: ast.AST, depth: int = 0) -> sp.Expr:
-        nonlocal remaining_nodes
-        remaining_nodes -= 1
-        if remaining_nodes < 0 or depth > 24:
+        if depth > _MAX_AST_DEPTH:
             raise EquationInputError("The equation is too complex.")
 
         if isinstance(node, ast.Constant):
