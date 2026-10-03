@@ -164,14 +164,35 @@ def _solve_exponential(request: dict[str, Any]) -> dict[str, Any]:
         raise EquationInputError("This operation requires an equation string.")
     _, _, expression = _parse_equation(equation)
     variable = _variable(expression, request.get("variable", "x"))
-    if not expression.has(sp.exp) and not any(
-        power.exp.has(variable) for power in expression.atoms(sp.Pow)
-    ):
+    powers_with_variable_exponent = [
+        power for power in expression.atoms(sp.Pow) if power.exp.has(variable)
+    ]
+    if not expression.has(sp.exp) and not powers_with_variable_exponent:
         raise EquationInputError("The equation must contain an exponential term.")
+    exponential_arguments = [
+        exponential.args[0] for exponential in expression.atoms(sp.exp)
+    ]
+    if any(
+        argument.has(variable) and argument.has(sp.sin, sp.cos, sp.tan)
+        for argument in [
+            *(power.exp for power in powers_with_variable_exponent),
+            *exponential_arguments,
+        ]
+    ):
+        raise EquationInputError(
+            "Exponential equations with periodic exponents may have infinitely many "
+            "solutions and are not supported."
+        )
     solutions = sp.solveset(expression, variable, domain=sp.S.Reals)
-    if isinstance(solutions, sp.ConditionSet):
-        raise EquationInputError("SymPy could not find a closed-form solution for this exponential equation.")
-    solution_text = [sp.sstr(solution) for solution in solutions]
+    if solutions is sp.S.EmptySet:
+        solution_values = []
+    elif isinstance(solutions, sp.FiniteSet):
+        solution_values = list(solutions)
+    else:
+        raise EquationInputError(
+            "Only finite real solution sets are supported for exponential equations."
+        )
+    solution_text = [sp.sstr(solution) for solution in solution_values]
     return _result(
         "exponential_solve",
         solution_text,

@@ -16,6 +16,7 @@ _UNARY_OPERATORS = {
     ast.UAdd: lambda value: value,
     ast.USub: lambda value: -value,
 }
+_MAX_NUMERIC_BITS = 4096
 
 
 class EquationInputError(ValueError):
@@ -53,6 +54,14 @@ def _parse_expression(
 
     remaining_nodes = 128
 
+    def check_numeric_size(value: sp.Expr) -> None:
+        if not value.is_Rational:
+            return
+        numerator_bits = abs(int(value.p)).bit_length()
+        denominator_bits = int(value.q).bit_length()
+        if max(numerator_bits, denominator_bits) > _MAX_NUMERIC_BITS:
+            raise EquationInputError("The numeric result is too large to process safely.")
+
     def build(node: ast.AST, depth: int = 0) -> sp.Expr:
         nonlocal remaining_nodes
         remaining_nodes -= 1
@@ -62,7 +71,9 @@ def _parse_expression(
         if isinstance(node, ast.Constant):
             if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
                 raise EquationInputError("Only numeric constants and the variable x are supported.")
-            return sp.Rational(str(node.value))
+            value = sp.Rational(str(node.value))
+            check_numeric_size(value)
+            return value
 
         if isinstance(node, ast.Name):
             if node.id in {"pi", "E"} and allow_functions:
@@ -130,7 +141,14 @@ def _parse_expression(
                         raise EquationInputError("Symbolic powers are not supported here.")
                 else:
                     raise EquationInputError("Powers must be numeric or a supported variable.")
-            return _BINARY_OPERATORS[type(node.op)](left, right)
+                if left.is_Rational and right.is_Integer:
+                    exponent = abs(int(right))
+                    base_bits = max(abs(int(left.p)).bit_length(), int(left.q).bit_length())
+                    if base_bits * exponent > _MAX_NUMERIC_BITS:
+                        raise EquationInputError("The numeric power is too large to process safely.")
+            result = _BINARY_OPERATORS[type(node.op)](left, right)
+            check_numeric_size(result)
+            return result
 
         raise EquationInputError(
             "Use numbers, x, parentheses, and +, -, *, /, or non-negative integer powers."

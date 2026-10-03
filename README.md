@@ -79,6 +79,10 @@ containing `exp(x)` or a numeric base raised to a variable:
 {"operation": "exponential_solve", "equation": "exp(x) = 3"}
 ```
 
+Only finite real solution sets are returned.
+Equations with periodic exponents, such as `exp(sin(x)) = 1`,
+are rejected because they can have infinitely many solutions.
+
 ### Calculus and differential equations
 
 Differentiate with the `differentiate` operation.

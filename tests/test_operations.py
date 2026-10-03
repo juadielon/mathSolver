@@ -41,6 +41,29 @@ def test_solves_exponential_equation() -> None:
     assert result["solutions"] == ["log(3)"]
 
 
+def test_rejects_exponential_equations_with_infinite_periodic_solutions() -> None:
+    response = client.post(
+        "/api/operate",
+        json={"operation": "exponential_solve", "equation": "exp(sin(x)) = 1"},
+    )
+
+    assert response.status_code == 422
+    assert "infinitely many solutions" in response.json()["detail"]
+
+
+def test_rejects_nested_numeric_powers_before_large_intermediates() -> None:
+    response = client.post(
+        "/api/operate",
+        json={
+            "operation": "differentiate",
+            "expression": "x + (((2**32)**32)**32)",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "too large" in response.json()["detail"]
+
+
 def test_differentiates_with_product_and_chain_rules() -> None:
     result = operate({"operation": "differentiate", "expression": "x^2 * sin(x)"})
     second_derivative = operate(
