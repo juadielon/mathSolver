@@ -56,7 +56,7 @@ def _preflight_expression(tree: ast.AST) -> None:
         if isinstance(node, ast.Name):
             if node.id != "x":
                 raise EquationInputError("Only the variable x is supported in this phase.")
-            return None
+            return 1
 
         if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPERATORS:
             return inspect(node.operand, depth + 1)
@@ -84,11 +84,9 @@ def _preflight_expression(tree: ast.AST) -> None:
                     raise EquationInputError(
                         "Powers must be non-negative integer constants up to 8."
                     )
-                result_bits = (left_bits or 1) * exponent
-            elif left_bits is None or right_bits is None:
-                result_bits = None
+                result_bits = left_bits * exponent
             elif isinstance(node.op, (ast.Add, ast.Sub)):
-                result_bits = max(left_bits, right_bits) + 1
+                result_bits = left_bits + right_bits + 1
             else:
                 result_bits = left_bits + right_bits
 

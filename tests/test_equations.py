@@ -59,6 +59,18 @@ def test_bounds_power_growth_for_scientific_notation_constants() -> None:
         solve_equation("1e308^8 * x = 0")
 
 
+def test_api_rejects_rational_sum_growth_before_solution_formatting() -> None:
+    primes = (1_000_000_007, 1_000_000_009, 1_000_000_033, 1_000_000_087,
+              1_000_000_093, 1_000_000_097, 1_000_000_103, 1_000_000_123)
+    rational_sum = " + ".join(f"1 / ({prime}^8)" for prime in primes)
+    equation = f"({rational_sum})^8 * x = 0"
+
+    response = client.post("/api/solve", json={"equation": equation})
+
+    assert response.status_code == 422
+    assert "intermediate" in response.json()["detail"]
+
+
 @pytest.mark.parametrize(
     "equation",
     [
