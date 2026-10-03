@@ -25,7 +25,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -123,33 +125,72 @@ form label {
   font-weight: 700;
 }
 
-.input-row {
-  display: flex;
-  gap: 10px;
-}
-
-.input-row input {
-  min-width: 0;
-  min-height: 56px;
-  padding: 0 17px;
-  flex: 1;
+form > select,
+.operation-field input,
+.operation-field select,
+.operation-field textarea {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 15px;
   border: 1px solid #dfe3d8;
   border-radius: 12px;
   background: #fcfcfa;
   color: var(--ink);
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 15px;
   outline: none;
 }
 
-.input-row input:focus {
+form > select,
+.operation-field select {
+  cursor: pointer;
+}
+
+.operation-field {
+  margin-top: 18px;
+}
+
+.operation-field input,
+.operation-field textarea {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 15px;
+}
+
+.operation-field textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+form > select:focus,
+.operation-field input:focus,
+.operation-field select:focus,
+.operation-field textarea:focus {
   border-color: #91bd42;
   box-shadow: 0 0 0 3px rgba(200, 241, 105, 0.26);
 }
 
-.input-row button {
+.bounds-row {
+  display: flex;
+  gap: 10px;
+}
+
+.bounds-row input {
+  min-width: 0;
+}
+
+.input-help {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.submit-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.submit-row button {
   display: inline-flex;
-  min-width: 112px;
+  min-width: 144px;
   min-height: 56px;
   align-items: center;
   justify-content: center;
@@ -163,19 +204,13 @@ form label {
   font-weight: 700;
 }
 
-.input-row button:hover:not(:disabled) {
+.submit-row button:hover:not(:disabled) {
   background: var(--green-dark);
 }
 
-.input-row button:disabled {
+.submit-row button:disabled {
   cursor: wait;
   opacity: 0.7;
-}
-
-.input-help {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 code {
@@ -287,11 +322,11 @@ code {
     padding: 36px 22px 30px;
   }
 
-  .input-row {
+  .bounds-row {
     flex-direction: column;
   }
 
-  .input-row button {
+  .submit-row button {
     width: 100%;
   }
 
