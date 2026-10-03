@@ -64,7 +64,7 @@ def _preflight_expression(
                 "The equation creates an excessively large intermediate value."
             )
 
-    def inspect(node: ast.AST, depth: int = 0) -> Fraction | None:
+    def inspect(node: ast.AST, depth: int = 0) -> tuple[Fraction | None, int]:
         nonlocal remaining_nodes
         remaining_nodes -= 1
         if remaining_nodes < 0 or depth > _MAX_AST_DEPTH:
@@ -77,18 +77,18 @@ def _preflight_expression(
                 raise EquationInputError("Numeric constants must be finite.")
             value = Fraction(str(node.value))
             check_size(value)
-            return value
+            return value, bit_size(value)
 
         if isinstance(node, ast.Name):
             if node.id in {"pi", "E"} and allow_functions:
-                return None
+                return None, 1
             if node.id not in variables:
                 if legacy_mode:
                     raise EquationInputError("Only the variable x is supported in this phase.")
                 raise EquationInputError(
                     f"Only these variables are supported: {', '.join(sorted(variables))}."
                 )
-            return None
+            return None, 1
 
         if isinstance(node, ast.Call) and allow_functions:
             if not isinstance(node.func, ast.Name) or node.keywords:
@@ -100,15 +100,14 @@ def _preflight_expression(
                 "Derivative",
             }:
                 raise EquationInputError("That function is not supported.")
-            for argument in node.args:
-                inspect(argument, depth + 1)
-            return None
+            arguments = [inspect(argument, depth + 1) for argument in node.args]
+            return None, max((bits for _, bits in arguments), default=1)
 
         if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPERATORS:
-            value = inspect(node.operand, depth + 1)
+            value, bits = inspect(node.operand, depth + 1)
             if value is not None and isinstance(node.op, ast.USub):
-                return -value
-            return value
+                value = -value
+            return value, bits
 
         if isinstance(node, ast.BinOp) and type(node.op) in _BINARY_OPERATORS:
             if isinstance(node.op, ast.Div) and legacy_mode and any(
@@ -117,8 +116,8 @@ def _preflight_expression(
             ):
                 raise EquationInputError("Variable denominators are not supported.")
 
-            left = inspect(node.left, depth + 1)
-            right = inspect(node.right, depth + 1)
+            left, left_bits = inspect(node.left, depth + 1)
+            right, right_bits = inspect(node.right, depth + 1)
 
             if isinstance(node.op, ast.Pow):
                 if legacy_mode and (
@@ -130,9 +129,9 @@ def _preflight_expression(
                         "Powers must be non-negative integer constants up to 8."
                     )
                 if right is None:
-                    return None
+                    return None, left_bits
                 if right.denominator != 1:
-                    return None
+                    return None, left_bits
                 exponent = right.numerator
                 if abs(exponent) > _MAX_INTERMEDIATE_BITS:
                     raise EquationInputError(
@@ -142,27 +141,28 @@ def _preflight_expression(
                     raise EquationInputError(
                         "Powers must be non-negative integer constants up to 8."
                     )
-                if left is None:
-                    return None
-                if bit_size(left) * abs(exponent) > _MAX_INTERMEDIATE_BITS:
+                result_bits = left_bits * abs(exponent)
+                if result_bits > _MAX_INTERMEDIATE_BITS:
                     raise EquationInputError(
                         "The equation creates an excessively large intermediate value."
                     )
+                if left is None:
+                    return None, max(1, result_bits)
                 value = left**exponent
                 check_size(value)
-                return value
+                return value, max(1, result_bits)
 
-            if left is None or right is None:
-                return None
             if isinstance(node.op, (ast.Add, ast.Sub)):
-                estimate = max(bit_size(left), bit_size(right)) + 1
+                estimate = max(left_bits, right_bits) + 1
             else:
-                estimate = bit_size(left) + bit_size(right)
+                estimate = left_bits + right_bits
             if estimate > _MAX_INTERMEDIATE_BITS:
                 raise EquationInputError(
                     "The equation creates an excessively large intermediate value."
                 )
 
+            if left is None or right is None:
+                return None, estimate
             if isinstance(node.op, ast.Add):
                 value = left + right
             elif isinstance(node.op, ast.Sub):
@@ -174,7 +174,7 @@ def _preflight_expression(
                     raise EquationInputError("Division by zero is not defined.")
                 value = left / right
             check_size(value)
-            return value
+            return value, estimate
 
         raise EquationInputError(
             "Use numbers, supported variables, parentheses, and +, -, *, /, or powers."

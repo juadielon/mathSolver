@@ -56,12 +56,20 @@ def test_rejects_nested_numeric_powers_before_large_intermediates() -> None:
         "/api/operate",
         json={
             "operation": "differentiate",
-            "expression": "x + (((2**32)**32)**32)",
+            "expression": "(((2**32*x)**32)**32)**32",
         },
     )
 
     assert response.status_code == 422
     assert "excessively large intermediate" in response.json()["detail"]
+
+
+def test_allows_bounded_nested_powers_with_symbolic_bases() -> None:
+    result = operate(
+        {"operation": "differentiate", "expression": "((2*x)^2)^2"}
+    )
+
+    assert result["result"] == "64*x**3"
 
 
 def test_differentiates_with_product_and_chain_rules() -> None:

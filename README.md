@@ -34,7 +34,7 @@ Powers may use `^` or `**`.
 Only the variable `x` and basic arithmetic are supported in Phase 1.
 The input is parsed as restricted mathematical syntax and is never evaluated as Python code.
 Equations with variable-dependent denominators are rejected because simplification can otherwise hide excluded values.
-Expressions whose estimated constant intermediates exceed the configured size limit are rejected before evaluation.
+Expressions whose estimated numeric intermediates exceed the configured size limit are rejected before evaluation, including coefficients multiplied by variables and nested powers.
 
 ## Phase 2 operation API
 
