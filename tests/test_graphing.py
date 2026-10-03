@@ -1,5 +1,7 @@
 import math
 
+from html.parser import HTMLParser
+
 from fastapi.testclient import TestClient
 
 from solver_app.main import app
@@ -108,3 +110,40 @@ def test_graph_ui_controls_are_served() -> None:
     assert page.status_code == 200
     assert 'value="graph"' in page.text
     assert 'id="graph-canvas"' in page.text
+
+
+def test_graph_and_integral_controls_have_independent_visibility() -> None:
+    class FieldHierarchyParser(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.ancestors: dict[str, list[str]] = {}
+            self.hidden: set[str] = set()
+            self.stack: list[tuple[str, str | None]] = []
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            attributes = dict(attrs)
+            element_id = attributes.get("id")
+            if element_id:
+                self.ancestors[element_id] = [ancestor_id for _, ancestor_id in self.stack if ancestor_id]
+                if "hidden" in attributes:
+                    self.hidden.add(element_id)
+            void_tags = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+            if tag not in void_tags:
+                self.stack.append((tag, element_id))
+
+        def handle_endtag(self, tag: str) -> None:
+            open_tags = [open_tag for open_tag, _ in self.stack]
+            if tag in open_tags:
+                self.stack = self.stack[:len(open_tags) - 1 - open_tags[::-1].index(tag)]
+
+    page = client.get("/")
+    parser = FieldHierarchyParser()
+    parser.feed(page.text)
+    script = client.get("/app.js")
+
+    assert parser.ancestors["bounds-field"] == parser.ancestors["graph-fields"]
+    assert "bounds-field" in parser.ancestors["lower"]
+    assert "graph-fields" in parser.ancestors["graph-range"]
+    assert {"bounds-field", "graph-fields"} <= parser.hidden
+    assert "fields.bounds.hidden = operation !== \"integrate\";" in script.text
+    assert "fields.graph.hidden = !isGraph;" in script.text
