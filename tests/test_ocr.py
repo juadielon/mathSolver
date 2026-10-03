@@ -74,6 +74,27 @@ def test_latex_recognition_is_converted_to_solver_syntax() -> None:
     assert latex_to_expression(r"x^{2}+\frac{4}{2}=0") == "x^(2)+(4)/(2)=0"
     assert latex_to_expression(r"\sqrt{x}+\sin(x)") == "sqrt(x)+sin(x)"
     assert latex_to_expression(r"\ln(x)\, + \arcsin(x)") == "log(x) + asin(x)"
+    assert latex_to_expression(r"\sin x") == "sin(x)"
+    assert latex_to_expression(r"\cos 2x") == "cos(2*x)"
+    assert latex_to_expression(r"\tan {x+1}") == "tan(x+1)"
+    assert latex_to_expression(r"\log \frac{x}{2}") == "log((x)/(2))"
+    assert latex_to_expression(r"\exp \sqrt{x}") == "exp(sqrt(x))"
+
+
+def test_latex_function_argument_stops_before_following_operators() -> None:
+    assert latex_to_expression(r"\sin x + \cos y") == "sin(x) + cos(y)"
+    assert latex_to_expression(r"\sin x+y") == "sin(x)+y"
+    assert latex_to_expression(r"\log x^2") == "log(x)^2"
+    assert latex_to_expression(r"\log \frac{x}{y}+1") == "log((x)/(y))+1"
+
+
+def test_latex_function_rejects_missing_arguments() -> None:
+    try:
+        latex_to_expression(r"\sin")
+    except OCRUnrecognisedError:
+        pass
+    else:
+        raise AssertionError("A function without an argument must be rejected.")
 
 
 def test_unsupported_or_empty_recognition_is_explicit() -> None:

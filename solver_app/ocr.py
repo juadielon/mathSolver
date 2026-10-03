@@ -176,37 +176,45 @@ def _convert_latex_fragment(
             if command in {"left", "right", "displaystyle", "textstyle"}:
                 position = command_end
                 continue
-            if command in {"frac", "dfrac", "tfrac", "sqrt"}:
+            if command in {"frac", "dfrac", "tfrac"}:
                 first, position = _read_latex_group(source, command_end)
                 first_expression = "".join(
                     _convert_latex_fragment(first, 0, expect_closing=False)[0]
                 )
-                if command == "sqrt":
-                    output.extend(("sqrt(", first_expression, ")"))
-                    continue
                 second, position = _read_latex_group(source, position)
                 second_expression = "".join(
                     _convert_latex_fragment(second, 0, expect_closing=False)[0]
                 )
                 output.extend(("(", first_expression, ")/(", second_expression, ")"))
                 continue
+            if command == "sqrt":
+                radicand, position = _read_latex_group(source, command_end)
+                radicand_expression = "".join(
+                    _convert_latex_fragment(radicand, 0, expect_closing=False)[0]
+                )
+                output.extend(("sqrt(", radicand_expression, ")"))
+                continue
+            if command in {
+                "sin", "cos", "tan", "asin", "arcsin", "acos", "arccos",
+                "atan", "arctan", "log", "ln", "exp",
+            }:
+                argument, position = _read_latex_function_argument(source, command_end)
+                argument_expression = "".join(
+                    _convert_latex_fragment(argument, 0, expect_closing=False)[0]
+                )
+                function_name = {
+                    "arcsin": "asin",
+                    "arccos": "acos",
+                    "arctan": "atan",
+                    "ln": "log",
+                }.get(command, command)
+                output.extend((function_name, "(", argument_expression, ")"))
+                continue
             replacements = {
                 "cdot": "*",
                 "times": "*",
                 "div": "/",
                 "pi": "pi",
-                "sin": "sin",
-                "cos": "cos",
-                "tan": "tan",
-                "asin": "asin",
-                "arcsin": "asin",
-                "acos": "acos",
-                "arccos": "acos",
-                "atan": "atan",
-                "arctan": "atan",
-                "log": "log",
-                "ln": "log",
-                "exp": "exp",
             }
             if command not in replacements:
                 raise OCRUnrecognisedError(
@@ -256,6 +264,67 @@ def _read_latex_group(source: str, position: int) -> tuple[str, int]:
                 return source[start:position], position + 1
         position += 1
     raise OCRUnrecognisedError("The recognised formula has unmatched braces.")
+
+
+def _read_latex_function_argument(source: str, position: int) -> tuple[str, int]:
+    while position < len(source) and source[position].isspace():
+        position += 1
+    if position >= len(source):
+        raise OCRUnrecognisedError(
+            "The recognised formula has a function without an argument."
+        )
+    if source[position] == "{":
+        return _read_latex_group(source, position)
+    if source[position] == "\\":
+        command_end = position + 1
+        while command_end < len(source) and source[command_end].isalpha():
+            command_end += 1
+        command = source[position + 1 : command_end]
+        if command in {"frac", "dfrac", "tfrac", "sqrt"}:
+            if command == "sqrt":
+                _, group_position = _read_latex_group(source, command_end)
+            else:
+                _, group_position = _read_latex_group(source, command_end)
+                _, group_position = _read_latex_group(source, group_position)
+            return source[position:group_position], group_position
+        if command in {
+            "sin", "cos", "tan", "asin", "arcsin", "acos", "arccos",
+            "atan", "arctan", "log", "ln", "exp",
+        }:
+            _, end_position = _read_latex_function_argument(source, command_end)
+            return source[position:end_position], end_position
+        raise OCRUnrecognisedError(
+            "The recognised function argument uses unsupported notation."
+        )
+    if source[position] == "(":
+        end_position = position + 1
+        depth = 1
+        while end_position < len(source):
+            if source[end_position] == "(":
+                depth += 1
+            elif source[end_position] == ")":
+                depth -= 1
+                if depth == 0:
+                    return source[position + 1 : end_position], end_position + 1
+            end_position += 1
+        raise OCRUnrecognisedError(
+            "The recognised formula has unmatched function parentheses."
+        )
+    if source[position].isalpha():
+        return source[position], position + 1
+    if source[position].isdigit():
+        end_position = position + 1
+        while end_position < len(source) and (
+            source[end_position].isdigit() or source[end_position] == "."
+        ):
+            end_position += 1
+        number = source[position:end_position]
+        if end_position < len(source) and source[end_position].isalpha():
+            return f"{number}*{source[end_position]}", end_position + 1
+        return number, end_position
+    raise OCRUnrecognisedError(
+        "Use braces or parentheses around compound function arguments."
+    )
 
 
 def recognise_math(image: Image.Image) -> str:
