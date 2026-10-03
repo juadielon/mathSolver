@@ -4,6 +4,7 @@ const equationInput = document.querySelector("#equation");
 const equationsInput = document.querySelector("#equations");
 const expressionInput = document.querySelector("#expression");
 const matrixInput = document.querySelector("#matrix");
+const graphFields = document.querySelector("#graph-fields");
 const results = document.querySelector("#results");
 const errorMessage = document.querySelector("#error-message");
 const resultTitle = document.querySelector("#result-title");
@@ -21,7 +22,12 @@ const fields = {
   point: document.querySelector("#point-field"),
   direction: document.querySelector("#direction-field"),
   bounds: document.querySelector("#bounds-field"),
+  graph: graphFields,
 };
+
+let graphData = null;
+let graphViewport = null;
+let graphDrag = null;
 
 const examples = {
   equation_solve: ["x^2 + 4 = 0", "Linear or quadratic equation in x."],
@@ -39,6 +45,7 @@ const examples = {
   matrix_determinant: ["", "Enter a matrix as JSON, for example [[1, 2], [3, 4]]."],
   matrix_rref: ["", "Enter a matrix as JSON; rectangular matrices are supported."],
   matrix_inverse: ["", "Enter a square matrix as JSON."],
+  graph: ["sin(x)", "Graph one real-valued function in x; try sin(x), x^2, or 1 / (x - 1)."],
 };
 
 operationSelect.addEventListener("change", updateOperationFields);
@@ -50,8 +57,9 @@ form.addEventListener("submit", async (event) => {
   try {
     const operation = operationSelect.value;
     const legacySolve = operation === "equation_solve";
-    const payload = legacySolve ? { equation: equationInput.value } : buildRequest(operation);
-    const response = await fetch(legacySolve ? "/api/solve" : "/api/operate", {
+    const graphOperation = operation === "graph";
+    const payload = legacySolve ? { equation: equationInput.value } : graphOperation ? buildGraphRequest() : buildRequest(operation);
+    const response = await fetch(legacySolve ? "/api/solve" : graphOperation ? "/api/graph" : "/api/operate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -107,11 +115,31 @@ function buildRequest(operation) {
   return payload;
 }
 
+function buildGraphRequest() {
+  const tangentText = document.querySelector("#tangent-points").value.trim();
+  const tangentPoints = tangentText
+    ? tangentText.split(",").map((value) => {
+      const point = Number(value.trim());
+      if (!Number.isFinite(point)) throw new Error("Tangent x-values must be finite numbers separated by commas.");
+      return point;
+    })
+    : [];
+  return {
+    expression: expressionInput.value,
+    x_min: Number(document.querySelector("#x-min").value),
+    x_max: Number(document.querySelector("#x-max").value),
+    sample_count: Number(document.querySelector("#sample-count").value),
+    include_derivative: document.querySelector("#include-derivative").checked,
+    tangent_points: tangentPoints,
+  };
+}
+
 function updateOperationFields() {
   const operation = operationSelect.value;
   const isEquation = ["equation_solve", "polynomial_solve", "exponential_solve", "ode_solve", "trig_solve"].includes(operation);
-  const isExpression = ["log_expand", "log_condense", "differentiate", "integrate", "limit", "trig_simplify"].includes(operation);
+  const isExpression = ["log_expand", "log_condense", "differentiate", "integrate", "limit", "trig_simplify", "graph"].includes(operation);
   const isMatrix = operation.startsWith("matrix_");
+  const isGraph = operation === "graph";
   fields.equation.hidden = !isEquation;
   fields.equations.hidden = operation !== "system_solve";
   fields.expression.hidden = !isExpression;
@@ -121,6 +149,7 @@ function updateOperationFields() {
   fields.point.hidden = operation !== "limit";
   fields.direction.hidden = operation !== "limit";
   fields.bounds.hidden = operation !== "integrate";
+  fields.graph.hidden = !isGraph;
 
   const [example, help] = examples[operation];
   if (isEquation) equationInput.value = operation === "equation_solve" ? "x^2 + 4 = 0" : example;
@@ -129,8 +158,10 @@ function updateOperationFields() {
 }
 
 function showResult(solution) {
-  resultTitle.textContent = solution.operation
-    ? formatValue(solution.result)
+  resultTitle.textContent = solution.operation === "graph"
+    ? solution.expression
+    : solution.operation
+      ? formatValue(solution.result)
     : formatSolutions(solution);
   degreeBadge.textContent = solution.operation
     ? solution.operation.replaceAll("_", " ")
@@ -148,9 +179,279 @@ function showResult(solution) {
       return item;
     }),
   );
+  const graphView = document.querySelector("#graph-view");
+  graphView.hidden = solution.operation !== "graph";
+  if (solution.operation === "graph") {
+    graphData = solution;
+    graphViewport = initialGraphViewport(solution);
+    document.querySelector("#derivative-toggle-label").hidden = !solution.derivative;
+    document.querySelector("#toggle-derivative").checked = false;
+    document.querySelector("#tangent-toggle-label").hidden = !solution.tangents.length;
+    document.querySelector("#toggle-tangents").checked = true;
+    const asymptoteStatus = solution.asymptotes.status === "unsupported"
+      ? `Asymptotes: unsupported (${solution.asymptotes.reason})`
+      : `Asymptotes: ${solution.asymptotes.markers.length}`;
+    const rootsStatus = solution.roots.status === "sampled_estimate"
+      ? "sampled root estimates"
+      : solution.roots.status.replaceAll("_", " ");
+    document.querySelector("#graph-summary").textContent =
+      `Roots: ${solution.roots.markers.length} ${rootsStatus} · ` +
+      `Extrema: ${solution.extrema.markers.length} ${solution.extrema.status.replaceAll("_", " ")} · ` +
+      `${asymptoteStatus} · Y-intercept: ${solution.y_intercept.status.replaceAll("_", " ")}`;
+    requestAnimationFrame(drawGraph);
+  } else {
+    graphData = null;
+  }
   errorMessage.hidden = true;
   results.hidden = false;
 }
+
+function initialGraphViewport(data) {
+  const values = data.samples.map((sample) => sample.y).filter(Number.isFinite).sort((a, b) => a - b);
+  const percentile = (fraction) => values[Math.floor((values.length - 1) * fraction)] || 0;
+  let yMin = percentile(0.03);
+  let yMax = percentile(0.97);
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || yMin === yMax) {
+    yMin = -1;
+    yMax = 1;
+  }
+  const padding = Math.max((yMax - yMin) * 0.12, 0.5);
+  return {
+    xMin: data.domain.x_min,
+    xMax: data.domain.x_max,
+    yMin: yMin - padding,
+    yMax: yMax + padding,
+  };
+}
+
+function drawGraph() {
+  if (!graphData || document.querySelector("#graph-view").hidden) return;
+  const canvas = document.querySelector("#graph-canvas");
+  const context = canvas.getContext("2d");
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (!width || !height) return;
+  const pixelRatio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * pixelRatio);
+  canvas.height = Math.round(height * pixelRatio);
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, width, height);
+
+  const margin = { left: 54, right: 18, top: 18, bottom: 34 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const toX = (value) => margin.left + (value - graphViewport.xMin) / (graphViewport.xMax - graphViewport.xMin) * plotWidth;
+  const toY = (value) => margin.top + (graphViewport.yMax - value) / (graphViewport.yMax - graphViewport.yMin) * plotHeight;
+
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, width, height);
+  context.font = "11px Segoe UI, Arial, sans-serif";
+  context.strokeStyle = "#e9ece6";
+  context.fillStyle = "#68736c";
+  context.lineWidth = 1;
+  for (let index = 0; index <= 8; index += 1) {
+    const px = margin.left + index / 8 * plotWidth;
+    const xValue = graphViewport.xMin + index / 8 * (graphViewport.xMax - graphViewport.xMin);
+    context.beginPath();
+    context.moveTo(px, margin.top);
+    context.lineTo(px, height - margin.bottom);
+    context.stroke();
+    context.fillText(formatNumber(xValue), px - 16, height - 12);
+  }
+  for (let index = 0; index <= 6; index += 1) {
+    const py = margin.top + index / 6 * plotHeight;
+    const yValue = graphViewport.yMax - index / 6 * (graphViewport.yMax - graphViewport.yMin);
+    context.beginPath();
+    context.moveTo(margin.left, py);
+    context.lineTo(width - margin.right, py);
+    context.stroke();
+    context.fillText(formatNumber(yValue), 4, py + 4);
+  }
+  context.strokeStyle = "#53655a";
+  context.lineWidth = 1.5;
+  if (graphViewport.xMin <= 0 && graphViewport.xMax >= 0) {
+    context.beginPath();
+    context.moveTo(toX(0), margin.top);
+    context.lineTo(toX(0), height - margin.bottom);
+    context.stroke();
+  }
+  if (graphViewport.yMin <= 0 && graphViewport.yMax >= 0) {
+    context.beginPath();
+    context.moveTo(margin.left, toY(0));
+    context.lineTo(width - margin.right, toY(0));
+    context.stroke();
+  }
+
+  context.save();
+  context.beginPath();
+  context.rect(margin.left, margin.top, plotWidth, plotHeight);
+  context.clip();
+  for (const asymptote of document.querySelector("#toggle-asymptotes").checked ? graphData.asymptotes.markers : []) {
+    context.strokeStyle = "#cb5b48";
+    context.setLineDash([5, 5]);
+    context.beginPath();
+    context.moveTo(toX(asymptote.x), margin.top);
+    context.lineTo(toX(asymptote.x), height - margin.bottom);
+    context.stroke();
+    context.setLineDash([]);
+  }
+  if (document.querySelector("#toggle-derivative").checked && graphData.derivative) {
+    drawSeries(context, graphData.derivative.samples, "#9482cc", toX, toY, graphData.asymptotes.markers);
+  }
+  drawSeries(context, graphData.samples, "#3c761e", toX, toY, graphData.asymptotes.markers);
+  if (document.querySelector("#toggle-tangents").checked) {
+    for (const tangent of graphData.tangents) {
+      if (tangent.status !== "numerical_at_requested_point") continue;
+      context.strokeStyle = "#e08932";
+      context.lineWidth = 1.5;
+      context.setLineDash([6, 4]);
+      context.beginPath();
+      context.moveTo(toX(graphViewport.xMin), toY(tangent.slope * graphViewport.xMin + tangent.intercept));
+      context.lineTo(toX(graphViewport.xMax), toY(tangent.slope * graphViewport.xMax + tangent.intercept));
+      context.stroke();
+      context.setLineDash([]);
+    }
+  }
+  drawMarkers(
+    context,
+    document.querySelector("#toggle-roots").checked ? graphData.roots.markers : [],
+    toX,
+    toY,
+    "#b43535",
+    "root",
+  );
+  drawMarkers(
+    context,
+    document.querySelector("#toggle-intercept").checked && graphData.y_intercept.status === "exact_symbolic"
+      ? [graphData.y_intercept]
+      : [],
+    toX,
+    toY,
+    "#3278a8",
+    "intercept",
+  );
+  drawMarkers(
+    context,
+    document.querySelector("#toggle-extrema").checked ? graphData.extrema.markers : [],
+    toX,
+    toY,
+    "#a34e9c",
+    "extremum",
+  );
+  context.restore();
+
+  canvas.onpointerdown = (event) => {
+    graphDrag = { x: event.clientX, y: event.clientY, viewport: { ...graphViewport } };
+    canvas.setPointerCapture(event.pointerId);
+  };
+  canvas.onpointermove = (event) => {
+    if (graphDrag) {
+      const dx = (event.clientX - graphDrag.x) / plotWidth * (graphDrag.viewport.xMax - graphDrag.viewport.xMin);
+      const dy = (event.clientY - graphDrag.y) / plotHeight * (graphDrag.viewport.yMax - graphDrag.viewport.yMin);
+      graphViewport = {
+        xMin: graphDrag.viewport.xMin - dx,
+        xMax: graphDrag.viewport.xMax - dx,
+        yMin: graphDrag.viewport.yMin + dy,
+        yMax: graphDrag.viewport.yMax + dy,
+      };
+      drawGraph();
+      return;
+    }
+    showGraphTooltip(event, canvas, margin, plotWidth, plotHeight);
+  };
+  canvas.onpointerup = () => { graphDrag = null; };
+  canvas.onpointercancel = () => { graphDrag = null; };
+  canvas.onpointerleave = () => {
+    if (!graphDrag) document.querySelector("#graph-tooltip").hidden = true;
+  };
+  canvas.onwheel = (event) => {
+    event.preventDefault();
+    const bounds = canvas.getBoundingClientRect();
+    const relativeX = (event.clientX - bounds.left - margin.left) / plotWidth;
+    const relativeY = (event.clientY - bounds.top - margin.top) / plotHeight;
+    const factor = event.deltaY < 0 ? 0.85 : 1.18;
+    const xCentre = graphViewport.xMin + relativeX * (graphViewport.xMax - graphViewport.xMin);
+    const yCentre = graphViewport.yMax - relativeY * (graphViewport.yMax - graphViewport.yMin);
+    graphViewport = {
+      xMin: xCentre + (graphViewport.xMin - xCentre) * factor,
+      xMax: xCentre + (graphViewport.xMax - xCentre) * factor,
+      yMin: yCentre + (graphViewport.yMin - yCentre) * factor,
+      yMax: yCentre + (graphViewport.yMax - yCentre) * factor,
+    };
+    drawGraph();
+  };
+}
+
+function drawSeries(context, samples, colour, toX, toY, asymptotes) {
+  context.strokeStyle = colour;
+  context.lineWidth = 2;
+  context.beginPath();
+  let connected = false;
+  let previousX = null;
+  for (const sample of samples) {
+    if (!Number.isFinite(sample.y) || Math.abs(sample.y) > 1e100) {
+      connected = false;
+      previousX = sample.x;
+      continue;
+    }
+    const crossesPole = previousX !== null && asymptotes.some((pole) =>
+      pole.x > Math.min(previousX, sample.x) && pole.x < Math.max(previousX, sample.x));
+    const pixelY = toY(sample.y);
+    if (crossesPole || pixelY < -10000 || pixelY > 10000) connected = false;
+    if (!connected) context.moveTo(toX(sample.x), pixelY);
+    else context.lineTo(toX(sample.x), pixelY);
+    connected = true;
+    previousX = sample.x;
+  }
+  context.stroke();
+}
+
+function drawMarkers(context, markers, toX, toY, colour, markerType) {
+  context.font = "11px Segoe UI, Arial, sans-serif";
+  for (const marker of markers) {
+    if (!Number.isFinite(marker.y) || marker.y < graphViewport.yMin || marker.y > graphViewport.yMax) continue;
+    context.beginPath();
+    context.arc(toX(marker.x), toY(marker.y), 4, 0, Math.PI * 2);
+    context.fillStyle = colour;
+    context.fill();
+    context.fillStyle = "#26362c";
+    const label = marker.kind === "sampled_estimate" ? "estimate" : "exact";
+    const descriptor = markerType === "extremum" ? marker.extremum : markerType;
+    context.fillText(`${descriptor} · ${label}`, toX(marker.x) + 6, toY(marker.y) - 6);
+  }
+}
+
+function showGraphTooltip(event, canvas, margin, plotWidth, plotHeight) {
+  const bounds = canvas.getBoundingClientRect();
+  const xPosition = event.clientX - bounds.left - margin.left;
+  const yPosition = event.clientY - bounds.top - margin.top;
+  if (xPosition < 0 || xPosition > plotWidth || yPosition < 0 || yPosition > plotHeight) return;
+  const xValue = graphViewport.xMin + xPosition / plotWidth * (graphViewport.xMax - graphViewport.xMin);
+  const nearest = graphData.samples.reduce((best, sample) =>
+    Math.abs(sample.x - xValue) < Math.abs(best.x - xValue) ? sample : best);
+  const tooltip = document.querySelector("#graph-tooltip");
+  tooltip.textContent = `x = ${formatNumber(nearest.x)} · f(x) = ${nearest.y === null ? "undefined" : formatNumber(nearest.y)}`;
+  tooltip.style.left = `${Math.min(event.clientX - bounds.left + 12, bounds.width - 220)}px`;
+  tooltip.style.top = `${Math.max(4, event.clientY - bounds.top - 28)}px`;
+  tooltip.hidden = false;
+}
+
+function formatNumber(value) {
+  if (!Number.isFinite(value)) return "undefined";
+  return Number(value.toPrecision(5)).toString();
+}
+
+for (const selector of [
+  "#toggle-roots",
+  "#toggle-intercept",
+  "#toggle-extrema",
+  "#toggle-asymptotes",
+  "#toggle-derivative",
+  "#toggle-tangents",
+]) {
+  document.querySelector(selector).addEventListener("change", drawGraph);
+}
+new ResizeObserver(drawGraph).observe(document.querySelector("#graph-canvas"));
 
 function formatValue(value) {
   return typeof value === "string" ? value : JSON.stringify(value);

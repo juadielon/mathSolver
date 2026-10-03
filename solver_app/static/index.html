@@ -15,7 +15,7 @@
           <span class="brand-mark" aria-hidden="true">g</span>
           <span>genius</span>
         </a>
-        <span class="phase-label">Symbolic maths · Phase 2</span>
+        <span class="phase-label">Symbolic maths · Phase 3</span>
       </header>
 
       <section class="solver-card" aria-labelledby="page-title">
@@ -41,6 +41,7 @@
             <option value="matrix_determinant">Matrix determinant</option>
             <option value="matrix_rref">Matrix RREF</option>
             <option value="matrix_inverse">Matrix inverse</option>
+            <option value="graph">Graph a function</option>
           </select>
 
           <div id="equation-field" class="operation-field">
@@ -85,6 +86,21 @@ x - y = 1</textarea>
               <input id="upper" type="text" placeholder="Upper bound">
             </div>
           </div>
+          <div id="graph-fields" class="operation-field optional-field" hidden>
+            <label for="graph-range">Graph x-range</label>
+            <div class="bounds-row" id="graph-range">
+              <input id="x-min" type="number" value="-10" min="-1000" max="1000" step="any" aria-label="Minimum x">
+              <input id="x-max" type="number" value="10" min="-1000" max="1000" step="any" aria-label="Maximum x">
+            </div>
+            <label for="sample-count">Samples</label>
+            <input id="sample-count" type="number" value="800" min="100" max="2000">
+            <label for="tangent-points">Tangent x-values (comma separated, optional)</label>
+            <input id="tangent-points" type="text" placeholder="1, 2.5">
+            <label class="inline-check" for="include-derivative">
+              <input id="include-derivative" type="checkbox">
+              Include derivative samples
+            </label>
+          </div>
           <p id="input-help" class="input-help">Try <code>2x + 3 = 7</code> or <code>x^2 + 4 = 0</code>.</p>
           <div class="submit-row">
             <button type="submit">
@@ -105,11 +121,27 @@ x - y = 1</textarea>
             <span id="degree-badge" class="degree-badge"></span>
           </div>
           <ol id="steps" class="steps"></ol>
+          <section id="graph-view" class="graph-view" aria-label="Interactive function graph" hidden>
+            <div class="graph-toggles">
+              <label><input id="toggle-roots" type="checkbox" checked> Roots</label>
+              <label><input id="toggle-intercept" type="checkbox" checked> Y-intercept</label>
+              <label><input id="toggle-extrema" type="checkbox" checked> Extrema</label>
+              <label><input id="toggle-asymptotes" type="checkbox" checked> Asymptotes</label>
+              <label id="derivative-toggle-label" hidden><input id="toggle-derivative" type="checkbox"> Derivative</label>
+              <label id="tangent-toggle-label" hidden><input id="toggle-tangents" type="checkbox" checked> Tangents</label>
+            </div>
+            <div class="graph-canvas-wrap">
+              <canvas id="graph-canvas" aria-label="Function graph. Drag to pan, scroll to zoom, and hover for values."></canvas>
+              <output id="graph-tooltip" class="graph-tooltip" hidden></output>
+            </div>
+            <p id="graph-summary" class="input-help"></p>
+            <p class="input-help">Drag to pan · scroll to zoom · hover for coordinates. Exact symbolic markers and sampled estimates are labelled separately.</p>
+          </section>
         </section>
       </section>
 
       <footer class="page-footer">
-        <span>Equations · calculus · trigonometry · matrices</span>
+        <span>Equations · calculus · graphing · matrices</span>
         <span>Runs locally in Docker</span>
       </footer>
     </main>

@@ -167,6 +167,51 @@ Matrices are limited to eight rows and columns.
 Determinants and inverses require square matrices.
 Singular matrices do not have an inverse.
 
+## Phase 3 graphing
+
+Graph one explicit Cartesian function of `x` with `POST /api/graph`:
+
+```json
+{
+  "expression": "sin(x)",
+  "x_min": -10,
+  "x_max": 10,
+  "sample_count": 800,
+  "include_derivative": true,
+  "tangent_points": [1]
+}
+```
+
+The response contains graph samples, x-root markers, the y-intercept,
+local extrema, asymptote markers, optional derivative samples,
+and tangent-line data for each requested x-value.
+Markers distinguish `exact_symbolic` results from `sampled_estimate` results.
+Undefined or non-real samples are `null` and break the plotted curve
+instead of joining across a discontinuity.
+
+The browser graph supports drag-to-pan, scroll-to-zoom, coordinate tooltips,
+and toggles for roots, the y-intercept, extrema, asymptotes,
+the derivative overlay, and requested tangent lines.
+Enter tangent x-values as comma-separated numbers.
+The graph endpoint rejects extra fields and invalid ranges.
+Expressions are limited to 512 characters;
+x-bounds are in `[-1000, 1000]` and at most 2000 units apart;
+sample counts are from 100 to 2000;
+and at most 10 tangent points may be requested within the graph range.
+
+Roots are reported as exact when a polynomial root set can be enumerated
+symbolically through degree 4.
+Other roots and non-polynomial extrema use labelled numerical estimates
+based on the selected sample grid.
+Exact extrema are limited to enumerable polynomial stationary points
+with a non-zero second derivative.
+Vertical asymptotes are determined exactly for rational functions
+with denominator degree at most 8 and tangent functions with affine arguments.
+Other asymptote forms are marked unsupported rather than guessed.
+Sampling can miss closely spaced or narrow features.
+The input must describe an explicit, real-valued function of `x`;
+implicit curves and parametric graphs are not supported.
+
 ## Safe expression syntax
 
 Expressions are parsed through a restricted Python abstract syntax tree.
@@ -194,4 +239,4 @@ Run the tests entirely in Docker:
 docker compose run --build --rm solver pytest -q
 ```
 
-Graphing, OCR, and image or handwriting input are outside this phase.
+OCR and image or handwriting input are outside this phase.
