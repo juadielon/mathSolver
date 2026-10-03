@@ -61,7 +61,7 @@ def test_rejects_nested_numeric_powers_before_large_intermediates() -> None:
     )
 
     assert response.status_code == 422
-    assert "too large" in response.json()["detail"]
+    assert "excessively large intermediate" in response.json()["detail"]
 
 
 def test_differentiates_with_product_and_chain_rules() -> None:

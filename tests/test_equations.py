@@ -39,6 +39,38 @@ def test_reports_identity_and_inconsistent_equations() -> None:
     assert contradiction["status"] == "no_solution"
 
 
+@pytest.mark.parametrize("equation", ["x / x = 1", "1 / (x - 1) = 0", "x / (x - x + 1) = 1"])
+def test_rejects_variable_denominators_before_simplification(equation: str) -> None:
+    with pytest.raises(EquationInputError, match="Variable denominators"):
+        solve_equation(equation)
+
+
+def test_rejects_nested_powers_before_building_large_intermediates() -> None:
+    expression = "2"
+    for _ in range(9):
+        expression = f"({expression})^8"
+
+    with pytest.raises(EquationInputError, match="excessively large intermediate"):
+        solve_equation(f"{expression} * x = 0")
+
+
+def test_bounds_power_growth_for_scientific_notation_constants() -> None:
+    with pytest.raises(EquationInputError, match="excessively large intermediate"):
+        solve_equation("1e308^8 * x = 0")
+
+
+def test_api_rejects_rational_sum_growth_before_solution_formatting() -> None:
+    primes = (1_000_000_007, 1_000_000_009, 1_000_000_033, 1_000_000_087,
+              1_000_000_093, 1_000_000_097, 1_000_000_103, 1_000_000_123)
+    rational_sum = " + ".join(f"1 / ({prime}^8)" for prime in primes)
+    equation = f"({rational_sum})^8 * x = 0"
+
+    response = client.post("/api/solve", json={"equation": equation})
+
+    assert response.status_code == 422
+    assert "intermediate" in response.json()["detail"]
+
+
 @pytest.mark.parametrize(
     "equation",
     [
@@ -67,8 +99,19 @@ def test_api_readiness_and_browser_are_served() -> None:
 def test_api_solves_equation_and_returns_validation_errors() -> None:
     response = client.post("/api/solve", json={"equation": "x^2 + 4 = 0"})
     invalid = client.post("/api/solve", json={"equation": "x ="})
+    invalid_domain = client.post("/api/solve", json={"equation": "x / x = 1"})
+
+    expression = "2"
+    for _ in range(9):
+        expression = f"({expression})^8"
+    excessive = client.post(
+        "/api/solve",
+        json={"equation": f"{expression} * x = 0"},
+    )
 
     assert response.status_code == 200
     assert response.json()["solutions"] == ["-2*I", "2*I"]
     assert invalid.status_code == 422
     assert "detail" in invalid.json()
+    assert invalid_domain.status_code == 422
+    assert excessive.status_code == 422
