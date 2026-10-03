@@ -15,34 +15,83 @@
           <span class="brand-mark" aria-hidden="true">g</span>
           <span>genius</span>
         </a>
-        <span class="phase-label">Mathematical solver · Phase 1</span>
+        <span class="phase-label">Symbolic maths · Phase 2</span>
       </header>
 
       <section class="solver-card" aria-labelledby="page-title">
         <p class="eyebrow">A clearer way through the maths</p>
         <h1 id="page-title">Solve an equation, step by step.</h1>
-        <p class="intro">Enter a linear or quadratic equation in x to see its solutions and working.</p>
+        <p class="intro">Choose an operation, enter your expression, and get an exact symbolic result with working.</p>
 
         <form id="solver-form">
-          <label for="equation">Your equation</label>
-          <div class="input-row">
-            <input
-              id="equation"
-              name="equation"
-              type="text"
-              value="x^2 + 4 = 0"
-              maxlength="512"
-              autocomplete="off"
-              spellcheck="false"
-              aria-describedby="input-help"
-              required
-            >
+          <label for="operation">Operation</label>
+          <select id="operation" name="operation">
+            <option value="equation_solve">Linear or quadratic equation (Phase 1)</option>
+            <option value="polynomial_solve">Polynomial equation</option>
+            <option value="system_solve">System of linear equations</option>
+            <option value="log_expand">Expand logarithms</option>
+            <option value="log_condense">Condense logarithms</option>
+            <option value="exponential_solve">Exponential equation</option>
+            <option value="differentiate">Differentiate</option>
+            <option value="integrate">Integrate</option>
+            <option value="limit">Limit</option>
+            <option value="ode_solve">First-order ODE</option>
+            <option value="trig_solve">Trigonometric equation</option>
+            <option value="trig_simplify">Simplify trigonometric identity</option>
+            <option value="matrix_determinant">Matrix determinant</option>
+            <option value="matrix_rref">Matrix RREF</option>
+            <option value="matrix_inverse">Matrix inverse</option>
+          </select>
+
+          <div id="equation-field" class="operation-field">
+            <label for="equation">Equation</label>
+            <input id="equation" name="equation" type="text" value="x^2 + 4 = 0" maxlength="512" autocomplete="off" spellcheck="false">
+          </div>
+          <div id="equations-field" class="operation-field" hidden>
+            <label for="equations">Equations (one per line)</label>
+            <textarea id="equations" rows="3" spellcheck="false">x + y = 3
+x - y = 1</textarea>
+          </div>
+          <div id="expression-field" class="operation-field" hidden>
+            <label for="expression">Expression</label>
+            <input id="expression" name="expression" type="text" maxlength="512" autocomplete="off" spellcheck="false">
+          </div>
+          <div id="matrix-field" class="operation-field" hidden>
+            <label for="matrix">Matrix (JSON rows)</label>
+            <textarea id="matrix" rows="3" spellcheck="false">[[1, 2], [3, 4]]</textarea>
+          </div>
+          <div id="variable-field" class="operation-field" hidden>
+            <label for="variable">Variable</label>
+            <select id="variable" name="variable">
+              <option>x</option><option>y</option><option>z</option><option>t</option>
+            </select>
+          </div>
+          <div id="order-field" class="operation-field optional-field" hidden>
+            <label for="order">Derivative order</label>
+            <input id="order" type="number" min="1" max="10" value="1">
+          </div>
+          <div id="point-field" class="operation-field optional-field" hidden>
+            <label for="point">Approach point</label>
+            <input id="point" type="text" value="0" maxlength="128">
+          </div>
+          <div id="direction-field" class="operation-field optional-field" hidden>
+            <label for="direction">Direction</label>
+            <select id="direction"><option value="both">Both sides</option><option value="+">From the right</option><option value="-">From the left</option></select>
+          </div>
+          <div id="bounds-field" class="operation-field optional-field" hidden>
+            <label for="lower">Bounds (leave both blank for an indefinite integral)</label>
+            <div class="bounds-row">
+              <input id="lower" type="text" placeholder="Lower bound">
+              <input id="upper" type="text" placeholder="Upper bound">
+            </div>
+          </div>
+          <p id="input-help" class="input-help">Try <code>2x + 3 = 7</code> or <code>x^2 + 4 = 0</code>.</p>
+          <div class="submit-row">
             <button type="submit">
-              <span>Solve</span>
+              <span>Calculate</span>
               <span aria-hidden="true">→</span>
             </button>
           </div>
-          <p id="input-help" class="input-help">Try <code>2x + 3 = 7</code> or <code>x^2 + 4 = 0</code>.</p>
         </form>
 
         <p id="error-message" class="error-message" role="alert" hidden></p>
@@ -60,7 +109,7 @@
       </section>
 
       <footer class="page-footer">
-        <span>Linear and quadratic equations</span>
+        <span>Equations · calculus · trigonometry · matrices</span>
         <span>Runs locally in Docker</span>
       </footer>
     </main>
