@@ -1,0 +1,26 @@
+model:
+  arch: unimernet
+  model_type: unimernet
+  model_config:
+    model_name: /opt/unimernet_small
+    max_seq_len: 1536
+  load_pretrained: true
+  pretrained: /opt/unimernet_small/unimernet_small.pth
+  tokenizer_config:
+    path: /opt/unimernet_small
+
+datasets:
+  formula_rec_eval:
+    vis_processor:
+      eval:
+        name: formula_image_eval
+        image_size: [192, 672]
+
+run:
+  runner: runner_iter
+  task: unimernet_train
+  evaluate: false
+  output_dir: /tmp/genius-unimernet
+  generate_cfg:
+    temperature: 0.0
+    do_sample: false

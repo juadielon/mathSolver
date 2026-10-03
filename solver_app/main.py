@@ -1,13 +1,24 @@
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 
 from solver_app.equations import EquationInputError, solve_equation
 from solver_app.graphing import graph_function
+from solver_app.ocr import (
+    ImageValidationError,
+    MAX_UPLOAD_BYTES,
+    OCRServiceError,
+    OCRUnrecognisedError,
+    decode_image,
+    image_has_ink,
+    latex_to_expression,
+    recognise_math,
+)
 from solver_app.operations import operate
+from solver_app.request_limits import UploadBodyLimitMiddleware
 
 
 class SolveRequest(BaseModel):
@@ -85,6 +96,9 @@ class GraphRequest(BaseModel):
 
 
 app = FastAPI(title="Genius Mathematical Solver", version="0.1.0")
+app.add_middleware(
+    UploadBodyLimitMiddleware, max_body_bytes=MAX_UPLOAD_BYTES + 64 * 1024
+)
 
 
 @app.get("/api/ready")
@@ -114,6 +128,29 @@ def graph(request: GraphRequest) -> dict[str, object]:
         return graph_function(request.model_dump())
     except EquationInputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.post("/api/recognise")
+async def recognise_image(image: UploadFile = File(...)) -> dict[str, str]:
+    content = await image.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        decoded = decode_image(content, image.content_type)
+    except ImageValidationError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    try:
+        if not image_has_ink(decoded):
+            raise OCRUnrecognisedError(
+                "No mathematical marks were found. Draw or upload a formula and try again."
+            )
+        latex = recognise_math(decoded)
+        expression = latex_to_expression(latex)
+    except OCRUnrecognisedError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except OCRServiceError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    return {"latex": latex, "expression": expression}
 
 
 static_directory = Path(__file__).parent / "static"
