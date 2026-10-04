@@ -11,6 +11,11 @@ const resultTitle = document.querySelector("#result-title");
 const degreeBadge = document.querySelector("#degree-badge");
 const stepsList = document.querySelector("#steps");
 const calculateButton = form.querySelector("button");
+const imageUpload = document.querySelector("#image-upload");
+const drawingCanvas = document.querySelector("#drawing-canvas");
+const drawingContext = drawingCanvas.getContext("2d");
+const recogniseButton = document.querySelector("#recognise-input");
+const recognitionStatus = document.querySelector("#recognition-status");
 
 const fields = {
   equation: document.querySelector("#equation-field"),
@@ -28,6 +33,7 @@ const fields = {
 let graphData = null;
 let graphViewport = null;
 let graphDrag = null;
+let drawingPointer = null;
 
 const examples = {
   equation_solve: ["x^2 + 4 = 0", "Linear or quadratic equation in x."],
@@ -49,6 +55,8 @@ const examples = {
 };
 
 operationSelect.addEventListener("change", updateOperationFields);
+recogniseButton.addEventListener("click", recogniseVisualInput);
+document.querySelector("#clear-drawing").addEventListener("click", clearDrawing);
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   setLoading(true);
@@ -474,3 +482,120 @@ function hideError() {
 }
 
 updateOperationFields();
+resizeDrawingCanvas();
+new ResizeObserver(resizeDrawingCanvas).observe(drawingCanvas);
+drawingCanvas.addEventListener("pointerdown", startDrawing);
+drawingCanvas.addEventListener("pointermove", continueDrawing);
+drawingCanvas.addEventListener("pointerup", stopDrawing);
+drawingCanvas.addEventListener("pointercancel", stopDrawing);
+
+async function recogniseVisualInput() {
+  const file = imageUpload.files[0];
+  const hasDrawing = !isDrawingCanvasBlank();
+  if (!file && !hasDrawing) {
+    recognitionStatus.textContent = "Choose an image or draw a formula first.";
+    return;
+  }
+  if (!canAcceptRecognisedInput()) return;
+
+  const formData = new FormData();
+  if (file) {
+    formData.append("image", file);
+  } else {
+    const blob = await new Promise((resolve) => drawingCanvas.toBlob(resolve, "image/png"));
+    if (!blob) {
+      recognitionStatus.textContent = "The drawing could not be prepared. Try again.";
+      return;
+    }
+    formData.append("image", blob, "drawing.png");
+  }
+
+  recogniseButton.disabled = true;
+  recognitionStatus.textContent = "Recognising maths locally…";
+  try {
+    const response = await fetch("/api/recognise", { method: "POST", body: formData });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || "The image could not be recognised.");
+    insertRecognisedInput(body.expression);
+    recognitionStatus.textContent = "Recognised text is in the solver field. Review or edit it, then calculate.";
+  } catch (error) {
+    recognitionStatus.textContent = error.message || "Local mathematical OCR is unavailable.";
+  } finally {
+    recogniseButton.disabled = false;
+  }
+}
+
+function canAcceptRecognisedInput() {
+  const operation = operationSelect.value;
+  const equationOperations = [
+    "equation_solve", "polynomial_solve", "exponential_solve", "ode_solve", "trig_solve",
+  ];
+  const expressionOperations = [
+    "log_expand", "log_condense", "differentiate", "integrate", "limit", "trig_simplify", "graph",
+  ];
+  if (equationOperations.includes(operation) || expressionOperations.includes(operation) || operation === "system_solve") {
+    return true;
+  }
+  recognitionStatus.textContent = "Choose an equation or expression operation before recognising maths.";
+  return false;
+}
+
+function insertRecognisedInput(expression) {
+  const operation = operationSelect.value;
+  if (operation === "system_solve") {
+    const existing = equationsInput.value.trim();
+    equationsInput.value = existing ? `${existing}\n${expression}` : expression;
+  } else if (["equation_solve", "polynomial_solve", "exponential_solve", "ode_solve", "trig_solve"].includes(operation)) {
+    equationInput.value = expression;
+  } else {
+    expressionInput.value = expression;
+  }
+}
+
+function resizeDrawingCanvas() {
+  const bounds = drawingCanvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  const pixelRatio = window.devicePixelRatio || 1;
+  drawingCanvas.width = Math.round(bounds.width * pixelRatio);
+  drawingCanvas.height = Math.round(bounds.height * pixelRatio);
+  drawingContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  drawingContext.fillStyle = "#fff";
+  drawingContext.fillRect(0, 0, bounds.width, bounds.height);
+  drawingContext.strokeStyle = "#192b24";
+  drawingContext.lineWidth = 3;
+  drawingContext.lineCap = "round";
+  drawingContext.lineJoin = "round";
+}
+
+function startDrawing(event) {
+  event.preventDefault();
+  drawingCanvas.setPointerCapture(event.pointerId);
+  drawingPointer = { x: event.offsetX, y: event.offsetY };
+}
+
+function continueDrawing(event) {
+  if (!drawingPointer) return;
+  drawingContext.beginPath();
+  drawingContext.moveTo(drawingPointer.x, drawingPointer.y);
+  drawingContext.lineTo(event.offsetX, event.offsetY);
+  drawingContext.lineWidth = Math.max(1, 1 + event.pressure * 3);
+  drawingContext.stroke();
+  drawingPointer = { x: event.offsetX, y: event.offsetY };
+}
+
+function stopDrawing() {
+  drawingPointer = null;
+}
+
+function clearDrawing() {
+  resizeDrawingCanvas();
+  recognitionStatus.textContent = "";
+}
+
+function isDrawingCanvasBlank() {
+  const pixels = drawingContext.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height).data;
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (pixels[index] < 250 || pixels[index + 1] < 250 || pixels[index + 2] < 250) return false;
+  }
+  return true;
+}

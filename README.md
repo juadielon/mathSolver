@@ -212,6 +212,56 @@ Sampling can miss closely spaced or narrow features.
 The input must describe an explicit, real-valued function of `x`;
 implicit curves and parametric graphs are not supported.
 
+## Phase 4 image and handwriting input
+
+The browser accepts PNG, JPEG, and WebP images,
+or a formula drawn with a mouse, finger, or stylus on its touch-enabled canvas.
+Select an equation or expression operation first,
+recognise the image locally,
+then review or edit the filled solver field before submitting it.
+For a system of equations,
+recognised input is appended as a new equation line.
+
+OCR uses the Apache-2.0 UniMERNet small formula-recognition model
+(`wanderkid/unimernet_small`, pinned to revision
+`82cb85440138c2038680fca410c8f70bb7343d6d`).
+The model was selected because its published UniMER-Test includes
+6,332 handwritten-expression examples as well as printed, complex, and
+screen-captured formula classes.
+Its checkpoint is approximately 810 MB;
+the CPU-only PyTorch runtime and OCR dependencies make the Docker image
+substantially larger than earlier phases.
+The Docker build downloads the pinned checkpoint and verifies its SHA-256
+before the image is usable.
+The running application uses the bundled model only;
+it does not contact external OCR services or download weights at runtime.
+
+The recogniser processes one formula crop at a time,
+not full-page documents or mixed text and equation regions.
+It accepts images up to 8 MiB (8,388,608 bytes),
+4096 pixels per side,
+and 12 megapixels,
+in PNG, JPEG, or WebP format;
+PDF, GIF, and animated-image input are not supported.
+Handwriting recognition is supported but not guaranteed,
+and accuracy depends on legibility, contrast, crop, and symbol style.
+Always check OCR output before calculating.
+The output adapter supports the solver's scalar syntax,
+including fractions, square roots, powers, equality,
+basic arithmetic, `pi`, and supported trigonometric, logarithmic,
+and exponential functions.
+Subscripts and other unsupported notation are rejected with an explicit error
+instead of being silently rewritten;
+enter or edit that notation manually in the solver field.
+
+To build and run the application with the local model,
+or execute the complete test suite in Docker:
+
+```sh
+docker compose up --build
+docker compose run --build --rm solver pytest -q
+```
+
 ## Safe expression syntax
 
 Expressions are parsed through a restricted Python abstract syntax tree.
@@ -238,5 +288,3 @@ Run the tests entirely in Docker:
 ```sh
 docker compose run --build --rm solver pytest -q
 ```
-
-OCR and image or handwriting input are outside this phase.

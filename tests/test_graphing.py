@@ -147,3 +147,21 @@ def test_graph_and_integral_controls_have_independent_visibility() -> None:
     assert {"bounds-field", "graph-fields"} <= parser.hidden
     assert "fields.bounds.hidden = operation !== \"integrate\";" in script.text
     assert "fields.graph.hidden = !isGraph;" in script.text
+
+
+def test_visual_drawing_is_touch_enabled_and_submits_to_editable_solver_input() -> None:
+    page = client.get("/")
+    script = client.get("/app.js")
+
+    assert page.status_code == script.status_code == 200
+    assert 'id="image-upload"' in page.text
+    assert 'id="drawing-canvas"' in page.text
+    assert "touch-action: none" in client.get("/styles.css").text
+    assert "drawingCanvas.addEventListener(\"pointerdown\", startDrawing)" in script.text
+    assert "drawingCanvas.addEventListener(\"pointermove\", continueDrawing)" in script.text
+    assert 'drawingCanvas.toBlob(resolve, "image/png")' in script.text
+    assert 'fetch("/api/recognise"' in script.text
+    assert "insertRecognisedInput(body.expression)" in script.text
+    assert 'form.addEventListener("submit"' in script.text
+    assert "equationInput.value = expression" in script.text
+    assert "expressionInput.value = expression" in script.text

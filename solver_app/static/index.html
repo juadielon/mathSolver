@@ -15,13 +15,29 @@
           <span class="brand-mark" aria-hidden="true">g</span>
           <span>genius</span>
         </a>
-        <span class="phase-label">Symbolic maths · Phase 3</span>
+        <span class="phase-label">Symbolic maths · Phase 4</span>
       </header>
 
       <section class="solver-card" aria-labelledby="page-title">
         <p class="eyebrow">A clearer way through the maths</p>
         <h1 id="page-title">Solve an equation, step by step.</h1>
         <p class="intro">Choose an operation, enter your expression, and get an exact symbolic result with working.</p>
+
+        <section class="visual-input" aria-labelledby="visual-input-title">
+          <h2 id="visual-input-title">Add maths from an image</h2>
+          <p class="input-help">Upload a formula or draw one below. Check the recognised text before calculating.</p>
+          <label for="image-upload">Image (PNG, JPEG, or WebP; up to 8 MiB)</label>
+          <input id="image-upload" type="file" accept="image/png,image/jpeg,image/webp">
+          <label for="drawing-canvas">Or draw an equation or expression</label>
+          <div class="drawing-canvas-wrap">
+            <canvas id="drawing-canvas" aria-label="Draw an equation or expression with a mouse, finger, or stylus"></canvas>
+          </div>
+          <div class="visual-actions">
+            <button id="clear-drawing" type="button" class="secondary-button">Clear drawing</button>
+            <button id="recognise-input" type="button" class="secondary-button">Recognise maths</button>
+          </div>
+          <p id="recognition-status" class="input-help" aria-live="polite"></p>
+        </section>
 
         <form id="solver-form">
           <label for="operation">Operation</label>

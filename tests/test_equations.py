@@ -94,6 +94,7 @@ def test_api_readiness_and_browser_are_served() -> None:
     page = client.get("/")
     assert page.status_code == 200
     assert "Solve an equation, step by step." in page.text
+    assert 'id="drawing-canvas"' in page.text
 
 
 def test_api_solves_equation_and_returns_validation_errors() -> None:
