@@ -31,7 +31,8 @@ curl -X POST http://localhost:8000/api/solve \
   -d "{\"equation\":\"x^2 + 4 = 0\"}"
 ```
 
-It solves linear and quadratic equations in one variable: `x`, `y`, `z`, or `t`.
+It solves linear and quadratic equations in one single-letter variable,
+`a` to `z` or `A` to `Z`.
 The variable is inferred from the equation;
 equations containing multiple variables are rejected and should use the system solver instead.
 It reports identities, inconsistent equations, malformed input,
@@ -53,7 +54,7 @@ with an explanatory `detail`.
 
 ### Polynomials and systems
 
-Polynomial equations in `x`, `y`, `z`, or `t` are supported through degree 8:
+Polynomial equations in any single-letter variable are supported through degree 8:
 
 ```sh
 curl -X POST http://localhost:8000/api/operate \
@@ -72,7 +73,7 @@ Solve a linear system by passing one equation per array entry:
 
 Every system equation must be linear.
 Non-linear systems, more than eight equations,
-and variables outside `x`, `y`, `z`, and `t` are rejected explicitly.
+and multi-letter variable names are rejected explicitly.
 
 ### Logarithms and exponential equations
 
@@ -176,7 +177,11 @@ Singular matrices do not have an inverse.
 
 ## Graphing
 
-Graph one explicit Cartesian function of `x` with `POST /api/graph`:
+Graph one explicit Cartesian function of a single variable with `POST /api/graph`.
+Omit `variable` to detect it,
+or set it to choose a letter;
+the response's `variable` names the horizontal axis.
+Range and sample keys keep their `x` names whichever letter is used:
 
 ```json
 {
@@ -199,7 +204,7 @@ instead of joining across a discontinuity.
 The browser graph supports drag-to-pan, scroll-to-zoom, coordinate tooltips,
 and toggles for roots, the y-intercept, extrema, asymptotes,
 the derivative overlay, and requested tangent lines.
-Enter tangent x-values as comma-separated numbers.
+Enter tangent points as comma-separated numbers.
 The graph endpoint rejects extra fields and invalid ranges.
 Expressions are limited to 512 characters;
 x-bounds are in `[-1000, 1000]` and at most 2000 units apart;
@@ -216,7 +221,8 @@ Vertical asymptotes are determined exactly for rational functions
 with denominator degree at most 8 and tangent functions with affine arguments.
 Other asymptote forms are marked unsupported rather than guessed.
 Sampling can miss closely spaced or narrow features.
-The input must describe an explicit, real-valued function of `x`;
+The input must describe an explicit, real-valued function of one variable,
+with no other free parameters;
 implicit curves and parametric graphs are not supported.
 
 ## Image and handwriting input
@@ -275,11 +281,17 @@ Expressions are parsed through a restricted Python abstract syntax tree.
 They are never evaluated as Python code.
 The solver does not call `eval`, `sympify`, or `parse_expr` on input.
 
-The supported scalar variables are `x`, `y`, `z`, and `t`.
+Variables are case-sensitive single letters, `a` to `z` and `A` to `Z`.
 Available functions are `log`, `exp`, `sin`, `cos`, `tan`,
 `asin`, `acos`, `atan`, `sqrt`, and `Abs`.
-Use `pi` and `E` for those constants.
+In operations and graphs,
+`pi` and `E` are constants unless you send `"variable": "E"`;
+the equation endpoint can infer `E` as a variable.
 Use explicit `*` for multiplication except for familiar forms such as `2x`.
+Write `2*e` for two times `e`,
+because `2e+1` is scientific notation for 20.
+See [docs/api-variables.md](docs/api-variables.md) for variable detection,
+constants and differential equation notation.
 
 Inputs are limited to 512 characters and expressions to a bounded syntax tree.
 Unsupported functions, malformed equations, unevaluated operations,
