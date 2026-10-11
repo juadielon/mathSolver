@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import threading
 import tokenize
 import warnings
@@ -108,6 +109,7 @@ def latex_to_expression(latex: str) -> str:
             break
     source = source.replace("−", "-").replace("×", "*").replace("÷", "/")
     source = source.replace("π", "pi")
+    source = re.sub(r"(?<=\d)\s+(?=\d)", "", source)
     output, position = _convert_latex_fragment(source, 0, expect_closing=False)
     expression = "".join(output).strip()
     expression = expression.replace("[", "(").replace("]", ")")
