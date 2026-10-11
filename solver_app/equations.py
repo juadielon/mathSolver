@@ -41,6 +41,7 @@ class EquationInputError(ValueError):
 
 def _normalise_expression(source: str) -> str:
     source = source.replace("^", "**")
+    source = re.sub(r"(?<=[0-9])\s*(?=\()", "*", source)
     source = re.sub(r"(?<=[0-9)])\s*(?=x\b)", "*", source)
     source = re.sub(r"(?<=x)\s*(?=\()", "*", source)
     source = re.sub(r"(?<=\))\s*(?=[(0-9x])", "*", source)
@@ -193,6 +194,9 @@ def _parse_expression(
     normalised_source = _normalise_expression(source.strip())
     if not legacy_mode:
         normalised_source = source.strip().replace("^", "**")
+        normalised_source = re.sub(
+            r"(?<=[0-9])\s*(?=\()", "*", normalised_source
+        )
         variable_pattern = "|".join(
             re.escape(name) for name in sorted(variables, key=len, reverse=True)
         )

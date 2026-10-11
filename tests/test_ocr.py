@@ -72,6 +72,11 @@ def test_image_validation_rejects_dimensions_and_upload_size_limits() -> None:
 
 def test_latex_recognition_is_converted_to_solver_syntax() -> None:
     assert latex_to_expression(r"x^{2}+\frac{4}{2}=0") == "x^(2)+(4)/(2)=0"
+    assert latex_to_expression("14y - 2(6y + 1) = 8") == "14y - 2(6y + 1) = 8"
+    assert (
+        latex_to_expression("3(3x + 4) = 4(x + 8)")
+        == "3(3x + 4) = 4(x + 8)"
+    )
     assert latex_to_expression(r"\sqrt{x}+\sin(x)") == "sqrt(x)+sin(x)"
     assert latex_to_expression(r"\ln(x)\, + \arcsin(x)") == "log(x) + asin(x)"
     assert latex_to_expression(r"\sin x") == "sin(x)"
@@ -79,6 +84,37 @@ def test_latex_recognition_is_converted_to_solver_syntax() -> None:
     assert latex_to_expression(r"\tan {x+1}") == "tan(x+1)"
     assert latex_to_expression(r"\log \frac{x}{2}") == "log((x)/(2))"
     assert latex_to_expression(r"\exp \sqrt{x}") == "exp(sqrt(x))"
+
+
+def test_ocr_recognised_implicit_products_solve_for_their_variables(monkeypatch) -> None:
+    examples = (
+        ("14y - 2(6y + 1) = 8", "y", ["5"]),
+        ("3(3x + 4) = 4(x + 8)", "x", ["4"]),
+    )
+    for expression, variable, solutions in examples:
+        monkeypatch.setattr(
+            main, "recognise_math", lambda _image, expression=expression: expression
+        )
+        recognised = client.post(
+            "/api/recognise",
+            files={"image": ("formula.png", png_bytes(), "image/png")},
+        )
+
+        assert recognised.status_code == 200
+        assert recognised.json()["expression"] == expression
+
+        solved = client.post(
+            "/api/operate",
+            json={
+                "operation": "polynomial_solve",
+                "equation": recognised.json()["expression"],
+                "variable": variable,
+            },
+        )
+
+        assert solved.status_code == 200
+        assert solved.json()["variable"] == variable
+        assert solved.json()["solutions"] == solutions
 
 
 def test_latex_function_argument_stops_before_following_operators() -> None:
