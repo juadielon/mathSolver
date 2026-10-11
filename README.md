@@ -291,3 +291,9 @@ Run the tests entirely in Docker:
 ```sh
 docker compose run --build --rm solver pytest -q
 ```
+
+Run the browser result-formatting regressions with Node.js's built-in test runner:
+
+```sh
+node --test tests/test_browser.js
+```
