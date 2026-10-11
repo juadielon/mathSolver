@@ -7,6 +7,7 @@ import sympy as sp
 
 
 _VARIABLE = sp.Symbol("x")
+_SUPPORTED_VARIABLES = {"x", "y", "z", "t"}
 _BINARY_OPERATORS = {
     ast.Add: lambda left, right: left + right,
     ast.Sub: lambda left, right: left - right,
@@ -39,11 +40,31 @@ class EquationInputError(ValueError):
     """Raised when an equation is invalid or outside the supported scope."""
 
 
-def _normalise_expression(source: str) -> str:
+def _normalise_expression(
+    source: str,
+    variables: set[str] | None = None,
+    *,
+    allow_variable_parentheses: bool = True,
+) -> str:
+    variables = {"x"} if variables is None else variables
+    variable_pattern = "|".join(
+        re.escape(name) for name in sorted(variables, key=len, reverse=True)
+    )
     source = source.replace("^", "**")
-    source = re.sub(r"(?<=[0-9)])\s*(?=x\b)", "*", source)
-    source = re.sub(r"(?<=x)\s*(?=\()", "*", source)
-    source = re.sub(r"(?<=\))\s*(?=[(0-9x])", "*", source)
+    source = re.sub(
+        rf"(?<=[0-9)])\s*(?=(?:{variable_pattern})\b)", "*", source
+    )
+    if allow_variable_parentheses:
+        source = re.sub(
+            rf"(?<=(?:{variable_pattern}))\s*(?=\()", "*", source
+        )
+    source = re.sub(
+        rf"(?<=[0-9])\s*(?=\()", "*", source
+    )
+    if allow_variable_parentheses:
+        source = re.sub(
+            rf"(?<=\))\s*(?=\(|[0-9]|(?:{variable_pattern})\b)", "*", source
+        )
     return source
 
 
@@ -83,7 +104,7 @@ def _preflight_expression(
             if node.id in {"pi", "E"} and allow_functions:
                 return None, 1
             if node.id not in variables:
-                if legacy_mode:
+                if legacy_mode and variables == {"x"}:
                     raise EquationInputError("Only the variable x is supported in this phase.")
                 raise EquationInputError(
                     f"Only these variables are supported: {', '.join(sorted(variables))}."
@@ -187,20 +208,16 @@ def _parse_expression(
     source: str,
     allowed_variables: set[str] | None = None,
     allow_functions: bool = False,
+    legacy_mode: bool | None = None,
 ) -> sp.Expr:
-    legacy_mode = allowed_variables is None and not allow_functions
+    if legacy_mode is None:
+        legacy_mode = allowed_variables is None and not allow_functions
     variables = {"x"} if allowed_variables is None else allowed_variables
-    normalised_source = _normalise_expression(source.strip())
-    if not legacy_mode:
-        normalised_source = source.strip().replace("^", "**")
-        variable_pattern = "|".join(
-            re.escape(name) for name in sorted(variables, key=len, reverse=True)
-        )
-        normalised_source = re.sub(
-            rf"(?<=[0-9)])\s*(?=(?:{variable_pattern})\b)",
-            "*",
-            normalised_source,
-        )
+    normalised_source = _normalise_expression(
+        source.strip(),
+        variables,
+        allow_variable_parentheses=not allow_functions,
+    )
     try:
         parsed = ast.parse(normalised_source, mode="eval")
     except (SyntaxError, ValueError, RecursionError) as error:
@@ -221,7 +238,7 @@ def _parse_expression(
             if node.id in {"pi", "E"} and allow_functions:
                 return sp.pi if node.id == "pi" else sp.E
             if node.id not in variables:
-                if legacy_mode:
+                if legacy_mode and variables == {"x"}:
                     raise EquationInputError("Only the variable x is supported in this phase.")
                 raise EquationInputError(
                     f"Only these variables are supported: {', '.join(sorted(variables))}."
@@ -318,29 +335,50 @@ def solve_equation(equation: str) -> dict[str, object]:
     if not left_source.strip() or not right_source.strip():
         raise EquationInputError("Enter an expression on both sides of the equals sign.")
 
-    left = _parse_expression(left_source)
-    right = _parse_expression(right_source)
+    left = _parse_expression(
+        left_source,
+        allowed_variables=_SUPPORTED_VARIABLES,
+        legacy_mode=True,
+    )
+    right = _parse_expression(
+        right_source,
+        allowed_variables=_SUPPORTED_VARIABLES,
+        legacy_mode=True,
+    )
+
+    mentioned_variables = set(
+        re.findall(r"(?<![A-Za-z_])[xyzt](?![A-Za-z_])", equation)
+    )
+    if len(mentioned_variables) > 1:
+        raise EquationInputError(
+            "This solver accepts one variable at a time (x, y, z, or t). "
+            "Use the system solver for multiple variables."
+        )
+    variable_name = next(iter(mentioned_variables), "x")
+    variable = _VARIABLE if variable_name == "x" else sp.Symbol(variable_name)
 
     try:
-        polynomial = sp.Poly(left - right, _VARIABLE)
+        polynomial = sp.Poly(left - right, variable)
     except (sp.PolynomialError, ZeroDivisionError) as error:
-        raise EquationInputError("The equation must simplify to a polynomial in x.") from error
+        raise EquationInputError(
+            f"The equation must simplify to a polynomial in {variable_name}."
+        ) from error
 
     if polynomial.is_zero:
         return {
             "equation": equation,
-            "variable": "x",
+            "variable": variable_name,
             "degree": None,
             "status": "all_reals",
             "solutions": [],
-            "steps": ["Both sides are equal for every value of x."],
+            "steps": [f"Both sides are equal for every value of {variable_name}."],
         }
 
     degree = polynomial.degree()
     if degree == 0:
         return {
             "equation": equation,
-            "variable": "x",
+            "variable": variable_name,
             "degree": 0,
             "status": "no_solution",
             "solutions": [],
@@ -350,21 +388,22 @@ def solve_equation(equation: str) -> dict[str, object]:
         raise EquationInputError("This phase supports linear and quadratic equations only.")
 
     expression = polynomial.as_expr()
-    solutions = sp.solve(expression, _VARIABLE)
+    solutions = sp.solve(expression, variable)
     steps = [f"Move all terms to one side: {sp.sstr(expression)} = 0."]
 
     if degree == 1:
         coefficient, constant = polynomial.all_coeffs()
         root = solutions[0]
         steps.append(
-            f"Isolate x: x = -({sp.sstr(constant)}) / ({sp.sstr(coefficient)}) = {sp.sstr(root)}."
+            f"Isolate {variable_name}: {variable_name} = "
+            f"-({sp.sstr(constant)}) / ({sp.sstr(coefficient)}) = {sp.sstr(root)}."
         )
     else:
         leading, linear, constant = polynomial.all_coeffs()
         discriminant = sp.simplify(linear**2 - 4 * leading * constant)
         steps.append(f"Calculate the discriminant: b^2 - 4ac = {sp.sstr(discriminant)}.")
         steps.append(
-            "Apply the quadratic formula: x = "
+            f"Apply the quadratic formula: {variable_name} = "
             f"({sp.sstr(-linear)} +/- sqrt({sp.sstr(discriminant)})) / "
             f"{sp.sstr(2 * leading)}."
         )
@@ -374,7 +413,7 @@ def solve_equation(equation: str) -> dict[str, object]:
 
     return {
         "equation": equation,
-        "variable": "x",
+        "variable": variable_name,
         "degree": degree,
         "status": "solved",
         "solutions": [sp.sstr(root) for root in solutions],

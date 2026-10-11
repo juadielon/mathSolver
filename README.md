@@ -27,11 +27,14 @@ curl -X POST http://localhost:8000/api/solve \
   -d "{\"equation\":\"x^2 + 4 = 0\"}"
 ```
 
-It solves linear and quadratic equations in `x`.
+It solves linear and quadratic equations in one variable: `x`, `y`, `z`, or `t`.
+The variable is inferred from the equation; equations containing multiple
+variables are rejected and should use the system solver instead.
 It reports identities, inconsistent equations, malformed input,
 and unsupported polynomial degrees distinctly.
 Powers may use `^` or `**`.
-Only the variable `x` and basic arithmetic are supported in Phase 1.
+Basic arithmetic is supported in Phase 1. Familiar implicit multiplication
+such as `2x` and `2(3y + 1)` is accepted.
 The input is parsed as restricted mathematical syntax and is never evaluated as Python code.
 Equations with variable-dependent denominators are rejected because simplification can otherwise hide excluded values.
 Expressions whose estimated numeric intermediates exceed the configured size limit are rejected before evaluation, including coefficients multiplied by variables and nested powers.

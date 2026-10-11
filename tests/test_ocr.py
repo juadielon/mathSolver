@@ -127,6 +127,28 @@ def test_ocr_endpoint_returns_editable_recognition(monkeypatch) -> None:
     assert solved.json()["solutions"] == ["-2*I", "2*I"]
 
 
+def test_ocr_y_equations_are_recognised_and_solved_end_to_end(monkeypatch) -> None:
+    examples = (
+        (r"14y-2(6y+1)=8", "5"),
+        (r"6y=8", "4/3"),
+    )
+    for latex, expected_solution in examples:
+        monkeypatch.setattr(main, "recognise_math", lambda _image, value=latex: value)
+        recognised = client.post(
+            "/api/recognise",
+            files={"image": ("formula.png", png_bytes(), "image/png")},
+        )
+
+        assert recognised.status_code == 200, recognised.text
+        solved = client.post(
+            "/api/solve", json={"equation": recognised.json()["expression"]}
+        )
+
+        assert solved.status_code == 200, solved.text
+        assert solved.json()["variable"] == "y"
+        assert solved.json()["solutions"] == [expected_solution]
+
+
 def test_ocr_endpoint_rejects_invalid_images_and_large_uploads() -> None:
     invalid = client.post(
         "/api/recognise",
