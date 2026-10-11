@@ -4,6 +4,10 @@ Math Solver is a self-contained, step-by-step mathematical solver.
 The application is built and run in Docker.
 The host does not need Python, Node.js, or project dependencies installed.
 
+For development and contribution guidance,
+see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
+The [developer roadmap](ROADMAP.md) separates current capabilities from upcoming work.
+
 ## Run with Docker Compose
 
 The host needs Docker Engine with the Compose plugin.
@@ -17,7 +21,7 @@ Open [http://localhost:8000](http://localhost:8000) in a browser.
 The service listens only on the host loopback interface.
 Stop the service with `Ctrl+C` or run `docker compose down`.
 
-## Phase 1 equation API
+## Linear and quadratic equation API
 
 The original equation endpoint remains available:
 
@@ -28,18 +32,18 @@ curl -X POST http://localhost:8000/api/solve \
 ```
 
 It solves linear and quadratic equations in one variable: `x`, `y`, `z`, or `t`.
-The variable is inferred from the equation; equations containing multiple
-variables are rejected and should use the system solver instead.
+The variable is inferred from the equation;
+equations containing multiple variables are rejected and should use the system solver instead.
 It reports identities, inconsistent equations, malformed input,
 and unsupported polynomial degrees distinctly.
 Powers may use `^` or `**`.
-Basic arithmetic is supported in Phase 1. Familiar implicit multiplication
-such as `2x` and `2(3y + 1)` is accepted.
+Basic arithmetic is supported.
+Familiar implicit multiplication such as `2x` and `2(3y + 1)` is accepted.
 The input is parsed as restricted mathematical syntax and is never evaluated as Python code.
 Equations with variable-dependent denominators are rejected because simplification can otherwise hide excluded values.
 Expressions whose estimated numeric intermediates exceed the configured size limit are rejected before evaluation, including coefficients multiplied by variables and nested powers.
 
-## Phase 2 operation API
+## Symbolic operation API
 
 Send a typed operation request to `POST /api/operate`.
 Successful responses include the operation, a structured result,
@@ -170,7 +174,7 @@ Matrices are limited to eight rows and columns.
 Determinants and inverses require square matrices.
 Singular matrices do not have an inverse.
 
-## Phase 3 graphing
+## Graphing
 
 Graph one explicit Cartesian function of `x` with `POST /api/graph`:
 
@@ -215,7 +219,7 @@ Sampling can miss closely spaced or narrow features.
 The input must describe an explicit, real-valued function of `x`;
 implicit curves and parametric graphs are not supported.
 
-## Phase 4 image and handwriting input
+## Image and handwriting input
 
 The browser accepts PNG, JPEG, and WebP images,
 or a formula drawn with a mouse, finger, or stylus on its touch-enabled canvas.
@@ -233,7 +237,7 @@ The model was selected because its published UniMER-Test includes
 screen-captured formula classes.
 Its checkpoint is approximately 810 MB;
 the CPU-only PyTorch runtime and OCR dependencies make the Docker image
-substantially larger than earlier phases.
+substantially larger than a solver without OCR.
 The Docker build downloads the pinned checkpoint and verifies its SHA-256
 before the image is usable.
 The running application uses the bundled model only;
@@ -292,7 +296,9 @@ Run the tests entirely in Docker:
 docker compose run --build --rm solver pytest -q
 ```
 
-Run the browser result-formatting regressions with Node.js's built-in test runner:
+Developers can optionally run browser result-formatting regressions
+with Node.js's built-in test runner,
+without npm dependencies:
 
 ```sh
 node --test tests/test_browser.js
