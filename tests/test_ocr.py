@@ -1,4 +1,5 @@
 from io import BytesIO
+from pathlib import Path
 import string
 
 import pytest
@@ -119,6 +120,45 @@ def test_latex_recognition_is_converted_to_solver_syntax() -> None:
     assert latex_to_expression(r"\tan {x+1}") == "tan(x+1)"
     assert latex_to_expression(r"\log \frac{x}{2}") == "log((x)/(2))"
     assert latex_to_expression(r"\exp \sqrt{x}") == "exp(sqrt(x))"
+
+
+def test_ocr_adapter_joins_digits_split_by_recognition_spacing() -> None:
+    assert (
+        latex_to_expression("1 7 y - 2 ( 6 y + 1 ) = 8")
+        == "17 y - 2 ( 6 y + 1 ) = 8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("image_name", "variable", "solution"),
+    [
+        ("handwritten-17y.png", "y", "2"),
+        ("handwritten-3x.png", "x", "4"),
+    ],
+)
+def test_bundled_ocr_recognises_reported_handwritten_equations(
+    image_name: str, variable: str, solution: str
+) -> None:
+    image_path = Path(__file__).parent / "fixtures" / "ocr" / image_name
+    recognised = client.post(
+        "/api/recognise",
+        files={
+            "image": (
+                image_name,
+                image_path.read_bytes(),
+                "image/png",
+            )
+        },
+    )
+
+    assert recognised.status_code == 200, recognised.text
+    solved = client.post(
+        "/api/solve",
+        json={"equation": recognised.json()["expression"]},
+    )
+    assert solved.status_code == 200, solved.text
+    assert solved.json()["variable"] == variable
+    assert solution in solved.json()["solutions"]
 
 
 def test_ocr_recognised_implicit_products_solve_for_their_variables(monkeypatch) -> None:
