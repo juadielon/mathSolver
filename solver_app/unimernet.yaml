@@ -20,7 +20,7 @@ run:
   runner: runner_iter
   task: unimernet_train
   evaluate: false
-  output_dir: /tmp/genius-unimernet
+  output_dir: /tmp/math-solver-unimernet
   generate_cfg:
     temperature: 0.0
     do_sample: false
