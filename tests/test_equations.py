@@ -1,3 +1,5 @@
+import string
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,7 +19,7 @@ def test_solves_linear_equation_with_steps() -> None:
     assert len(result["steps"]) == 2
 
 
-@pytest.mark.parametrize("variable", ["x", "y", "z", "t"])
+@pytest.mark.parametrize("variable", string.ascii_letters)
 def test_solves_linear_equation_for_each_supported_variable(variable: str) -> None:
     result = solve_equation(f"2{variable} + 1 = 5")
 
@@ -95,7 +97,7 @@ def test_api_rejects_rational_sum_growth_before_solution_formatting() -> None:
         "x + 1",
         "x^3 = 1",
         "x^9 = 1",
-        "a = 1",
+        "alpha = 1",
         "1 / 0 = x",
         "__import__('os') = 0",
         "x.__class__ = 0",
@@ -172,3 +174,43 @@ def test_preserves_variable_name_when_all_variable_terms_cancel() -> None:
 
     assert result["variable"] == "y"
     assert result["status"] == "all_reals"
+
+
+@pytest.mark.parametrize("variable", string.ascii_letters)
+def test_api_solves_quadratics_and_preserves_cancelled_variables(variable: str) -> None:
+    response = client.post(
+        "/api/solve", json={"equation": f"{variable}^2 - 5{variable} + 6 = 0"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["variable"] == variable
+    assert response.json()["solutions"] == ["2", "3"]
+    cancelled = solve_equation(f"{variable} - {variable} = 0")
+    assert cancelled["variable"] == variable
+    assert cancelled["status"] == "all_reals"
+
+
+@pytest.mark.parametrize(
+    ("equation", "variable", "solution"),
+    [
+        ("1e+3a = 0x1A", "a", "13/500"),
+        ("1E-3B = 0xA", "B", "10000"),
+        ("e = 1e+3", "e", "1000"),
+        ("E = 1E+3", "E", "1000"),
+        ("1e+3j = 0x1A", "j", "13/500"),
+        ("A = 0x1A", "A", "26"),
+        ("b = 0b1010", "b", "10"),
+    ],
+)
+def test_numeric_tokens_are_not_split_into_variables(
+    equation: str, variable: str, solution: str
+) -> None:
+    result = solve_equation(equation)
+    assert result["variable"] == variable
+    assert result["solutions"] == [solution]
+
+
+@pytest.mark.parametrize("name", ["ab", "alpha", "x1", "_x", "é", "π", "\uff21", "\u212a"])
+def test_rejects_non_ascii_or_multi_letter_variables(name: str) -> None:
+    response = client.post("/api/solve", json={"equation": f"{name} = 1"})
+    assert response.status_code == 422
+    assert "phase" not in str(response.json()["detail"]).lower()

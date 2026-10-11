@@ -3,13 +3,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import threading
+import tokenize
 import warnings
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from solver_app.equations import EquationInputError, _parse_expression
+from solver_app.equations import EquationInputError, _SUPPORTED_VARIABLES, _parse_expression
 
 
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
@@ -128,8 +129,9 @@ def latex_to_expression(latex: str) -> str:
         for side in sides:
             _parse_expression(
                 side,
-                allowed_variables={"x", "y", "z", "t"},
+                allowed_variables=_SUPPORTED_VARIABLES - {"E"},
                 allow_functions=True,
+                allow_dependent_functions=True,
             )
     except EquationInputError as error:
         raise OCRUnrecognisedError(
@@ -313,14 +315,17 @@ def _read_latex_function_argument(source: str, position: int) -> tuple[str, int]
     if source[position].isalpha():
         return source[position], position + 1
     if source[position].isdigit():
-        end_position = position + 1
-        while end_position < len(source) and (
-            source[end_position].isdigit() or source[end_position] == "."
+        tokens = tokenize.generate_tokens(StringIO(source[position:]).readline)
+        numeric_token = next(tokens)
+        end_position = position + numeric_token.end[1]
+        number = numeric_token.string
+        next_token = next(tokens)
+        if (
+            next_token.type == tokenize.NAME
+            and next_token.string in _SUPPORTED_VARIABLES
+            and next_token.start == numeric_token.end
         ):
-            end_position += 1
-        number = source[position:end_position]
-        if end_position < len(source) and source[end_position].isalpha():
-            return f"{number}*{source[end_position]}", end_position + 1
+            return f"{number}*{next_token.string}", position + next_token.end[1]
         return number, end_position
     raise OCRUnrecognisedError(
         "Use braces or parentheses around compound function arguments."

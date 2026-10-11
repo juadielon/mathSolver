@@ -1,4 +1,7 @@
 from io import BytesIO
+import string
+
+import pytest
 
 from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
@@ -14,6 +17,38 @@ from solver_app.ocr import (
 
 
 client = TestClient(main.app)
+
+
+@pytest.mark.parametrize("variable", string.ascii_letters)
+def test_ocr_adapter_preserves_every_single_letter_for_equation_solving(variable: str) -> None:
+    expression = latex_to_expression(f"2{variable} + 1 = 5")
+    solved = client.post("/api/solve", json={"equation": expression})
+    assert solved.status_code == 200, solved.text
+    assert solved.json()["variable"] == variable
+    assert solved.json()["solutions"] == ["2"]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (r"\sin 1e+3", "sin(1e+3)"),
+        (r"\cos 0x1A", "cos(0x1A)"),
+        (r"\sin 1E-3Q", "sin(1E-3*Q)"),
+        (r"\cos 2J", "cos(2J)"),
+        (r"\sin A", "sin(A)"),
+        ("Derivative(F(Q), Q)+F(Q)=0", "Derivative(F(Q), Q)+F(Q)=0"),
+    ],
+)
+def test_ocr_adapter_keeps_numeric_tokens_and_generalised_ode_notation(
+    source: str, expected: str
+) -> None:
+    assert latex_to_expression(source) == expected
+
+
+@pytest.mark.parametrize("source", ["alpha=1", "é=1", "gamma(A)", "x_1=0"])
+def test_ocr_adapter_rejects_invalid_names_and_unsupported_functions(source: str) -> None:
+    with pytest.raises(OCRUnrecognisedError):
+        latex_to_expression(source)
 
 
 def png_bytes(width: int = 320, height: int = 120) -> bytes:

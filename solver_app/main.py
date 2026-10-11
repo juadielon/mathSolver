@@ -47,7 +47,7 @@ class OperationRequest(BaseModel):
     equation: str | None = Field(default=None, max_length=512)
     equations: list[str] | None = Field(default=None, max_length=8)
     expression: str | None = Field(default=None, max_length=512)
-    variable: Literal["x", "y", "z", "t"] = "x"
+    variable: str | None = Field(default=None, min_length=1, max_length=1, pattern=r"^[a-zA-Z]$")
     order: int = Field(default=1, ge=1, le=10)
     point: str | None = Field(default=None, max_length=128)
     direction: Literal["both", "+", "-"] = "both"
@@ -60,6 +60,7 @@ class GraphRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
     expression: str = Field(min_length=1, max_length=512)
+    variable: str | None = Field(default=None, min_length=1, max_length=1, pattern=r"^[a-zA-Z]$")
     x_min: float = Field(default=-10, ge=-1000, le=1000, allow_inf_nan=False)
     x_max: float = Field(default=10, ge=-1000, le=1000, allow_inf_nan=False)
     sample_count: int = Field(default=800, ge=100, le=2000)
