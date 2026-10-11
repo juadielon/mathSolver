@@ -112,7 +112,7 @@ def test_api_readiness_and_browser_are_served() -> None:
     assert client.get("/api/ready").json() == {"status": "ok"}
     page = client.get("/")
     assert page.status_code == 200
-    assert "Solve an equation, step by step." in page.text
+    assert '<h1 id="page-title">Your maths, worked out.</h1>' in page.text
     assert 'id="drawing-canvas"' in page.text
 
 

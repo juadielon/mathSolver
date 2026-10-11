@@ -185,19 +185,26 @@ def test_graph_and_integral_controls_have_independent_visibility() -> None:
         def __init__(self) -> None:
             super().__init__()
             self.ancestors: dict[str, list[str]] = {}
+            self.groups: dict[str, list[str]] = {}
             self.hidden: set[str] = set()
-            self.stack: list[tuple[str, str | None]] = []
+            self.stack: list[tuple[str, dict[str, str | None]]] = []
 
         def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
             attributes = dict(attrs)
             element_id = attributes.get("id")
             if element_id:
-                self.ancestors[element_id] = [ancestor_id for _, ancestor_id in self.stack if ancestor_id]
+                self.ancestors[element_id] = [
+                    ancestor_id for _, ancestor in self.stack if (ancestor_id := ancestor.get("id"))
+                ]
+                self.groups[element_id] = [
+                    label for _, ancestor in self.stack
+                    if ancestor.get("role") == "group" and (label := ancestor.get("aria-labelledby"))
+                ]
                 if "hidden" in attributes:
                     self.hidden.add(element_id)
             void_tags = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
             if tag not in void_tags:
-                self.stack.append((tag, element_id))
+                self.stack.append((tag, attributes))
 
         def handle_endtag(self, tag: str) -> None:
             open_tags = [open_tag for open_tag, _ in self.stack]
@@ -210,8 +217,14 @@ def test_graph_and_integral_controls_have_independent_visibility() -> None:
     script = client.get("/app.js")
 
     assert parser.ancestors["bounds-field"] == parser.ancestors["graph-fields"]
-    assert "bounds-field" in parser.ancestors["lower"]
-    assert "graph-fields" in parser.ancestors["graph-range"]
+    for field in ("lower", "upper"):
+        assert "bounds-field" in parser.ancestors[field]
+        assert "graph-fields" not in parser.ancestors[field]
+    assert "graph-fields" in parser.ancestors["graph-range-label"]
+    for field in ("x-min", "x-max"):
+        assert "graph-fields" in parser.ancestors[field]
+        assert "bounds-field" not in parser.ancestors[field]
+        assert parser.groups[field] == ["graph-range-label"]
     assert {"bounds-field", "graph-fields"} <= parser.hidden
     assert "fields.bounds.hidden = operation !== \"integrate\";" in script.text
     assert "fields.graph.hidden = !isGraph;" in script.text
