@@ -37,6 +37,10 @@ test("operation results show equalities as readable equations", () => {
   assert.equal(formatValue([["1", "0"], ["0", "1"]]), '[["1","0"],["0","1"]]');
 });
 
+test("empty operation answer lists display no solution", () => {
+  assert.equal(formatValue([]), "No solution");
+});
+
 test("identity and inconsistent result messages stay unchanged", () => {
   assert.equal(
     formatSolutions({ status: "all_reals", variable: "y", solutions: [] }),

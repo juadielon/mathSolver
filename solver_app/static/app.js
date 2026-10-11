@@ -524,6 +524,7 @@ function formatSolutions(solution) {
 
 function formatValue(value) {
   if (typeof value === "string") return formatEquality(value);
+  if (Array.isArray(value) && value.length === 0) return "No solution";
   // Lists of answers read better inline; matrices keep their row structure.
   if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
     return value.map(formatEquality).join("  ·  ");
