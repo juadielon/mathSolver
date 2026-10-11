@@ -40,6 +40,19 @@ tangent line and sampling explanation use that letter. Existing `x_min`,
 they represent horizontal coordinates regardless of the variable name.
 Exact markers, null values at undefined points and sampling limits are unchanged.
 
+## Migrating clients
+
+Omitting `variable` from an operation now means Auto, rather than selecting `x`.
+Clients that require the old behaviour must send `"variable": "x"`.
+
+Graph clients must use the response's `variable` in axis labels, tooltips,
+function labels and range controls. A client that still labels these as `x`
+must send `"variable": "x"` until it supports the response metadata. Do not
+infer the label from coordinate keys: `sample.x` remains a compatibility key,
+even when the graph uses another letter.
+
+## ODEs, OCR and numeric syntax
+
 First-order ODEs accept any single-letter dependent and independent names,
 for example `Derivative(F(Q), Q) + F(Q) = 0`. There must be exactly one
 dependent function with one independent variable, and derivatives must be
