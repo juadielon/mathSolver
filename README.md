@@ -1,6 +1,6 @@
-# Genius Mathematical Solver
+# Math Solver
 
-Genius is a self-contained, step-by-step mathematical solver.
+Math Solver is a self-contained, step-by-step mathematical solver.
 The application is built and run in Docker.
 The host does not need Python, Node.js, or project dependencies installed.
 
