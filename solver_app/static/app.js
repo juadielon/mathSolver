@@ -154,7 +154,7 @@ function buildGraphRequest() {
   const tangentPoints = tangentText
     ? tangentText.split(",").map((value) => {
       const point = Number(value.trim());
-      if (!Number.isFinite(point)) throw new Error("Tangent x-values must be finite numbers separated by commas.");
+      if (!Number.isFinite(point)) throw new Error("Tangent points must be finite numbers separated by commas.");
       return point;
     })
     : [];
@@ -492,7 +492,8 @@ function showGraphTooltip(event, canvas, margin, plotWidth, plotHeight) {
   const nearest = graphData.samples.reduce((best, sample) =>
     Math.abs(sample.x - xValue) < Math.abs(best.x - xValue) ? sample : best);
   const tooltip = document.querySelector("#graph-tooltip");
-  tooltip.textContent = `x = ${formatNumber(nearest.x)} · f(x) = ${nearest.y === null ? "undefined" : formatNumber(nearest.y)}`;
+  const variable = graphData.variable || "x";
+  tooltip.textContent = `${variable} = ${formatNumber(nearest.x)} · f(${variable}) = ${nearest.y === null ? "undefined" : formatNumber(nearest.y)}`;
   tooltip.style.left = `${Math.min(event.clientX - bounds.left + 12, bounds.width - 220)}px`;
   tooltip.style.top = `${Math.max(4, event.clientY - bounds.top - 28)}px`;
   tooltip.hidden = false;
