@@ -150,8 +150,25 @@ def test_api_solves_linear_equations_in_y(equation: str, solution: str) -> None:
     assert response.json()["solutions"] == [solution]
 
 
-def test_api_rejects_equations_with_multiple_variables() -> None:
-    response = client.post("/api/solve", json={"equation": "x + y = 3"})
+@pytest.mark.parametrize("equation", ["x + y = 3", "x - x + y = 3", "x = x + y - y"])
+def test_api_rejects_equations_with_multiple_variables(equation: str) -> None:
+    response = client.post("/api/solve", json={"equation": equation})
 
     assert response.status_code == 422
     assert "system solver" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("equation", ["y = 0x10", "0x10 = y", "2y = 0x20"])
+def test_api_distinguishes_hexadecimal_constants_from_variables(equation: str) -> None:
+    response = client.post("/api/solve", json={"equation": equation})
+
+    assert response.status_code == 200
+    assert response.json()["variable"] == "y"
+    assert response.json()["solutions"] == ["16"]
+
+
+def test_preserves_variable_name_when_all_variable_terms_cancel() -> None:
+    result = solve_equation("y - y = 0x0")
+
+    assert result["variable"] == "y"
+    assert result["status"] == "all_reals"

@@ -209,6 +209,7 @@ def _parse_expression(
     allowed_variables: set[str] | None = None,
     allow_functions: bool = False,
     legacy_mode: bool | None = None,
+    mentioned_variables: set[str] | None = None,
 ) -> sp.Expr:
     if legacy_mode is None:
         legacy_mode = allowed_variables is None and not allow_functions
@@ -224,6 +225,12 @@ def _parse_expression(
         raise EquationInputError("Enter a valid mathematical expression.") from error
 
     _preflight_expression(parsed.body, variables, allow_functions, legacy_mode)
+    if mentioned_variables is not None:
+        mentioned_variables.update(
+            node.id
+            for node in ast.walk(parsed.body)
+            if isinstance(node, ast.Name) and node.id in variables
+        )
 
     def build(node: ast.AST, depth: int = 0) -> sp.Expr:
         if depth > _MAX_AST_DEPTH:
@@ -335,20 +342,20 @@ def solve_equation(equation: str) -> dict[str, object]:
     if not left_source.strip() or not right_source.strip():
         raise EquationInputError("Enter an expression on both sides of the equals sign.")
 
+    mentioned_variables: set[str] = set()
     left = _parse_expression(
         left_source,
         allowed_variables=_SUPPORTED_VARIABLES,
         legacy_mode=True,
+        mentioned_variables=mentioned_variables,
     )
     right = _parse_expression(
         right_source,
         allowed_variables=_SUPPORTED_VARIABLES,
         legacy_mode=True,
+        mentioned_variables=mentioned_variables,
     )
 
-    mentioned_variables = set(
-        re.findall(r"(?<![A-Za-z_])[xyzt](?![A-Za-z_])", equation)
-    )
     if len(mentioned_variables) > 1:
         raise EquationInputError(
             "This solver accepts one variable at a time (x, y, z, or t). "
