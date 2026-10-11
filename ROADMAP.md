@@ -23,52 +23,20 @@ logarithmic transformations and supported exponential equations,
 derivatives, integrals, limits, first-order differential equations,
 trigonometric operations,
 and matrix determinants, row reduction, and inverses.
-The browser also graphs explicit functions of `x`,
+The browser also graphs explicit functions of one variable,
 with labelled exact or sampled markers,
 optional derivative overlays,
 and tangent lines.
 
-Scalar variables are currently limited to `x`, `y`, `z`, and `t`.
-The broader variable support and simpler input workspace below are in progress,
-not released.
+Variables can be any single letter, `a` to `z` or `A` to `Z`.
+[docs/api-variables.md](docs/api-variables.md) explains detection,
+the `pi` and `E` constant rules,
+and differential equation notation.
+The browser offers one Type, Write, or Upload choice,
+groups calculations in a single menu,
+and detects the variable unless the user picks one.
 
 ## Next user-centred priorities
-
-### Use the variable names in the problem
-
-Users should be able to enter any single-letter variable,
-instead of rewriting a problem to fit four allowed letters.
-Broader variable support is upcoming;
-do not document arbitrary letters as supported until its PR lands.
-
-Completion criteria:
-
-- Supported solver operations accept single-letter variables consistently across parsing, request validation, and result labels.
-- Constants and reserved function notation have explicit, documented rules rather than ambiguous interpretation.
-- Existing `x`, `y`, `z`, and `t` examples keep working, and invalid or unsupported input still produces a clear error.
-- Focused tests cover new letters, existing syntax, and conflicts with reserved notation; browser controls and documentation match the landed API.
-
-Graphing currently uses `x`,
-and differential equations use the documented `y(x)` notation.
-Any change to those conventions needs explicit coverage and documentation,
-not an assumption that changing a shared variable list is sufficient.
-
-### Make Type, Write, and Upload easier to use
-
-Users should have a simpler workspace for keyboard input,
-handwriting with a finger, mouse, or stylus,
-and uploading a formula image.
-The unified Type/Write/Upload workspace is upcoming;
-the current browser already supports typing, drawing, and image recognition,
-but does not yet provide that simplified organisation.
-
-Completion criteria:
-
-- Input choices are easy to find and use on desktop and touch devices, without historical phase labels.
-- Users can enter maths by keyboard, draw with supported pointer devices, or upload a supported image without losing their input when moving through the workflow.
-- Recognised text remains editable before submission, with visible progress, clear errors, and a deliberate calculation action.
-- Operation-specific inputs, results, graph controls, and system-equation entry remain usable; keyboard access and focus behaviour are checked alongside touch and mouse interactions.
-- Relevant browser regressions and manual interaction checks are recorded, and user documentation describes only the landed interface.
 
 ### Keep handwritten input local and honest
 

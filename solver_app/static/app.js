@@ -16,6 +16,11 @@ const drawingCanvas = document.querySelector("#drawing-canvas");
 const drawingContext = drawingCanvas.getContext("2d");
 const recogniseButton = document.querySelector("#recognise-input");
 const recognitionStatus = document.querySelector("#recognition-status");
+const inputMethods = {
+  type: document.querySelector("#type-input"),
+  write: document.querySelector("#write-input"),
+  upload: document.querySelector("#upload-input"),
+};
 
 const fields = {
   equation: document.querySelector("#equation-field"),
@@ -34,9 +39,12 @@ let graphData = null;
 let graphViewport = null;
 let graphDrag = null;
 let drawingPointer = null;
+let drawingStrokes = [];
+let inputMode = "type";
+let isBusy = false;
 
 const examples = {
-  equation_solve: ["x^2 + 4 = 0", "Linear or quadratic equation in x, y, z, or t."],
+  equation_solve: ["2a + 3 = 7", "Linear or quadratic equations in any letter, a–z or A–Z. Use ^ for powers, and 2*e for 2 times e."],
   polynomial_solve: ["x^3 - 6x^2 + 11x - 6 = 0", "Polynomial equations through degree 8."],
   system_solve: ["", "Enter one linear equation per line."],
   log_expand: ["log(x*y)", "Use log(...), exp(...), sin(...), cos(...), and related functions."],
@@ -51,12 +59,25 @@ const examples = {
   matrix_determinant: ["", "Enter a matrix as JSON, for example [[1, 2], [3, 4]]."],
   matrix_rref: ["", "Enter a matrix as JSON; rectangular matrices are supported."],
   matrix_inverse: ["", "Enter a square matrix as JSON."],
-  graph: ["sin(x)", "Graph one real-valued function in x; try sin(x), x^2, or 1 / (x - 1)."],
+  graph: ["sin(x)", "Graph a real-valued function in one variable; try sin(x), a^2 or 1 / (t - 1)."],
 };
 
+for (const [mode, button] of Object.entries(inputMethods)) {
+  button.addEventListener("click", () => setInputMode(mode));
+}
 operationSelect.addEventListener("change", updateOperationFields);
 recogniseButton.addEventListener("click", recogniseVisualInput);
 document.querySelector("#clear-drawing").addEventListener("click", clearDrawing);
+document.querySelector("#undo-drawing").addEventListener("click", () => {
+  drawingStrokes.pop();
+  drawingPointer = null;
+  redrawDrawing();
+});
+imageUpload.addEventListener("change", () => { recognitionStatus.textContent = ""; });
+form.addEventListener("input", () => {
+  results.hidden = true;
+  hideError();
+});
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   setLoading(true);
@@ -91,7 +112,7 @@ function buildRequest(operation) {
   const text = (selector) => document.querySelector(selector).value;
   if (["polynomial_solve", "exponential_solve", "ode_solve", "trig_solve"].includes(operation)) {
     payload.equation = equationInput.value;
-    payload.variable = text("#variable");
+    if (chosenVariable()) payload.variable = chosenVariable();
   }
   if (operation === "system_solve") {
     payload.equations = equationsInput.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -100,7 +121,7 @@ function buildRequest(operation) {
     payload.expression = expressionInput.value;
   }
   if (["differentiate", "integrate", "limit"].includes(operation)) {
-    payload.variable = text("#variable");
+    if (chosenVariable()) payload.variable = chosenVariable();
   }
   if (operation === "differentiate") payload.order = Number(text("#order"));
   if (operation === "integrate") {
@@ -123,17 +144,23 @@ function buildRequest(operation) {
   return payload;
 }
 
+// A hidden field can still hold a letter from a previous calculation.
+function chosenVariable() {
+  return fields.variable.hidden ? "" : document.querySelector("#variable").value.trim();
+}
+
 function buildGraphRequest() {
   const tangentText = document.querySelector("#tangent-points").value.trim();
   const tangentPoints = tangentText
     ? tangentText.split(",").map((value) => {
       const point = Number(value.trim());
-      if (!Number.isFinite(point)) throw new Error("Tangent x-values must be finite numbers separated by commas.");
+      if (!Number.isFinite(point)) throw new Error("Tangent points must be finite numbers separated by commas.");
       return point;
     })
     : [];
   return {
     expression: expressionInput.value,
+    ...(chosenVariable() ? { variable: chosenVariable() } : {}),
     x_min: Number(document.querySelector("#x-min").value),
     x_max: Number(document.querySelector("#x-max").value),
     sample_count: Number(document.querySelector("#sample-count").value),
@@ -152,7 +179,8 @@ function updateOperationFields() {
   fields.equations.hidden = operation !== "system_solve";
   fields.expression.hidden = !isExpression;
   fields.matrix.hidden = !isMatrix;
-  fields.variable.hidden = !["polynomial_solve", "exponential_solve", "differentiate", "integrate", "limit", "trig_solve"].includes(operation);
+  fields.variable.hidden = !["polynomial_solve", "exponential_solve", "differentiate", "integrate", "limit", "ode_solve", "trig_solve", "graph"].includes(operation);
+  if (operation === "ode_solve") document.querySelector("#variable").value = "";
   fields.order.hidden = operation !== "differentiate";
   fields.point.hidden = operation !== "limit";
   fields.direction.hidden = operation !== "limit";
@@ -160,9 +188,36 @@ function updateOperationFields() {
   fields.graph.hidden = !isGraph;
 
   const [example, help] = examples[operation];
-  if (isEquation) equationInput.value = operation === "equation_solve" ? "x^2 + 4 = 0" : example;
-  if (isExpression) expressionInput.value = example;
+  if (isEquation) equationInput.placeholder = example;
+  if (isExpression) expressionInput.placeholder = example;
+  equationInput.required = isEquation;
+  expressionInput.required = isExpression;
+  equationsInput.required = operation === "system_solve";
+  matrixInput.required = isMatrix;
   document.querySelector("#input-help").textContent = help;
+  document.querySelector("#calculation-label").textContent = operationSelect.selectedOptions[0].textContent;
+  if (isMatrix) setInputMode("type");
+  inputMethods.write.disabled = isMatrix;
+  inputMethods.upload.disabled = isMatrix;
+  results.hidden = true;
+  hideError();
+}
+
+function setInputMode(mode) {
+  inputMode = mode;
+  for (const [name, button] of Object.entries(inputMethods)) {
+    button.setAttribute("aria-pressed", String(name === mode));
+  }
+  document.querySelector("#visual-input").hidden = mode === "type";
+  document.querySelector("#drawing-input").hidden = mode !== "write";
+  document.querySelector("#upload-panel").hidden = mode !== "upload";
+  recognitionStatus.textContent = "";
+  if (mode === "write") resizeDrawingCanvas();
+  if (mode === "type") {
+    const activeInput = [equationInput, equationsInput, expressionInput, matrixInput]
+      .find((input) => !input.parentElement.hidden);
+    activeInput.focus();
+  }
 }
 
 function showResult(solution) {
@@ -172,7 +227,7 @@ function showResult(solution) {
       ? formatValue(solution.result)
     : formatSolutions(solution);
   degreeBadge.textContent = solution.operation
-    ? solution.operation.replaceAll("_", " ")
+    ? operationSelect.selectedOptions[0].textContent
     : solution.degree === null
       ? "Identity"
       : solution.degree === 0
@@ -438,7 +493,8 @@ function showGraphTooltip(event, canvas, margin, plotWidth, plotHeight) {
   const nearest = graphData.samples.reduce((best, sample) =>
     Math.abs(sample.x - xValue) < Math.abs(best.x - xValue) ? sample : best);
   const tooltip = document.querySelector("#graph-tooltip");
-  tooltip.textContent = `x = ${formatNumber(nearest.x)} · f(x) = ${nearest.y === null ? "undefined" : formatNumber(nearest.y)}`;
+  const variable = graphData.variable || "x";
+  tooltip.textContent = `${variable} = ${formatNumber(nearest.x)} · f(${variable}) = ${nearest.y === null ? "undefined" : formatNumber(nearest.y)}`;
   tooltip.style.left = `${Math.min(event.clientX - bounds.left + 12, bounds.width - 220)}px`;
   tooltip.style.top = `${Math.max(4, event.clientY - bounds.top - 28)}px`;
   tooltip.hidden = false;
@@ -461,18 +517,47 @@ for (const selector of [
 }
 new ResizeObserver(drawGraph).observe(document.querySelector("#graph-canvas"));
 
-function formatValue(value) {
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
 function formatSolutions(solution) {
   if (solution.status === "all_reals") return "Every real number is a solution";
   if (solution.status === "no_solution") return "No solution";
   return solution.solutions.map((root) => `${solution.variable} = ${root}`).join("  ·  ");
 }
 
+function formatValue(value) {
+  if (typeof value === "string") return formatEquality(value);
+  if (Array.isArray(value) && value.length === 0) return "No solution";
+  // Lists of answers read better inline; matrices keep their row structure.
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value.map(formatEquality).join("  ·  ");
+  }
+  return JSON.stringify(value);
+}
+
+function formatEquality(text) {
+  if (!text.startsWith("Eq(") || !text.endsWith(")")) return text;
+  let depth = 0;
+  for (let index = 3; index < text.length - 1; index += 1) {
+    if (text[index] === "(") depth += 1;
+    if (text[index] === ")") depth -= 1;
+    if (text[index] === "," && depth === 0) {
+      return `${text.slice(3, index).trim()} = ${text.slice(index + 1, -1).trim()}`;
+    }
+  }
+  return text;
+}
+
 function setLoading(isLoading) {
-  calculateButton.disabled = isLoading;
+  isBusy = isLoading;
+  for (const control of [...form.querySelectorAll("input, select, textarea, button"), ...Object.values(inputMethods), imageUpload, recogniseButton]) {
+    control.disabled = isLoading;
+  }
+  if (!isLoading) {
+    const isMatrix = operationSelect.value.startsWith("matrix_");
+    inputMethods.write.disabled = isMatrix;
+    inputMethods.upload.disabled = isMatrix;
+  }
+  updateDrawingControls();
+  form.setAttribute("aria-busy", String(isLoading));
   calculateButton.querySelector("span").textContent = isLoading ? "Working…" : "Calculate";
 }
 
@@ -490,38 +575,34 @@ drawingCanvas.addEventListener("pointerup", stopDrawing);
 drawingCanvas.addEventListener("pointercancel", stopDrawing);
 
 async function recogniseVisualInput() {
-  const file = imageUpload.files[0];
-  const hasDrawing = !isDrawingCanvasBlank();
+  const file = inputMode === "upload" ? imageUpload.files[0] : null;
+  const hasDrawing = inputMode === "write" && !isDrawingCanvasBlank();
   if (!file && !hasDrawing) {
     recognitionStatus.textContent = "Choose an image or draw a formula first.";
     return;
   }
   if (!canAcceptRecognisedInput()) return;
 
-  const formData = new FormData();
-  if (file) {
-    formData.append("image", file);
-  } else {
-    const blob = await new Promise((resolve) => drawingCanvas.toBlob(resolve, "image/png"));
-    if (!blob) {
-      recognitionStatus.textContent = "The drawing could not be prepared. Try again.";
-      return;
-    }
-    formData.append("image", blob, "drawing.png");
-  }
-
-  recogniseButton.disabled = true;
+  setLoading(true);
   recognitionStatus.textContent = "Recognising maths locally…";
   try {
+    const formData = new FormData();
+    if (file) {
+      formData.append("image", file);
+    } else {
+      const blob = await new Promise((resolve) => drawingCanvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("The drawing could not be prepared. Try again.");
+      formData.append("image", blob, "drawing.png");
+    }
     const response = await fetch("/api/recognise", { method: "POST", body: formData });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || "The image could not be recognised.");
     insertRecognisedInput(body.expression);
-    recognitionStatus.textContent = "Recognised text is in the solver field. Review or edit it, then calculate.";
+    recognitionStatus.textContent = "Check the recognised text below. Edit anything that looks wrong, then calculate.";
   } catch (error) {
     recognitionStatus.textContent = error.message || "Local mathematical OCR is unavailable.";
   } finally {
-    recogniseButton.disabled = false;
+    setLoading(false);
   }
 }
 
@@ -550,52 +631,100 @@ function insertRecognisedInput(expression) {
   } else {
     expressionInput.value = expression;
   }
+  results.hidden = true;
+  hideError();
 }
 
 function resizeDrawingCanvas() {
   const bounds = drawingCanvas.getBoundingClientRect();
   if (!bounds.width || !bounds.height) return;
   const pixelRatio = window.devicePixelRatio || 1;
-  drawingCanvas.width = Math.round(bounds.width * pixelRatio);
-  drawingCanvas.height = Math.round(bounds.height * pixelRatio);
+  const width = Math.round(bounds.width * pixelRatio);
+  const height = Math.round(bounds.height * pixelRatio);
+  if (drawingCanvas.width === width && drawingCanvas.height === height) return;
+  drawingCanvas.width = width;
+  drawingCanvas.height = height;
   drawingContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  redrawDrawing();
+}
+
+function redrawDrawing() {
+  const bounds = drawingCanvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
   drawingContext.fillStyle = "#fff";
   drawingContext.fillRect(0, 0, bounds.width, bounds.height);
   drawingContext.strokeStyle = "#192b24";
-  drawingContext.lineWidth = 3;
+  drawingContext.fillStyle = "#192b24";
   drawingContext.lineCap = "round";
   drawingContext.lineJoin = "round";
+  for (const stroke of drawingStrokes) {
+    const first = stroke[0];
+    drawingContext.beginPath();
+    drawingContext.arc(first.x * bounds.width, first.y * bounds.height, first.width / 2, 0, Math.PI * 2);
+    drawingContext.fill();
+    for (let index = 1; index < stroke.length; index += 1) {
+      drawStrokeSegment(stroke[index - 1], stroke[index], bounds);
+    }
+  }
+  updateDrawingControls();
+}
+
+function drawingPoint(event) {
+  const bounds = drawingCanvas.getBoundingClientRect();
+  return {
+    x: (event.clientX - bounds.left) / bounds.width,
+    y: (event.clientY - bounds.top) / bounds.height,
+    width: event.pointerType === "pen" ? Math.max(1.5, 1 + event.pressure * 3) : 3,
+  };
+}
+
+function drawStrokeSegment(previous, point, bounds) {
+  drawingContext.beginPath();
+  drawingContext.moveTo(previous.x * bounds.width, previous.y * bounds.height);
+  drawingContext.lineTo(point.x * bounds.width, point.y * bounds.height);
+  drawingContext.lineWidth = point.width;
+  drawingContext.stroke();
+}
+
+function updateDrawingControls() {
+  const blank = isDrawingCanvasBlank();
+  document.querySelector("#undo-drawing").disabled = isBusy || blank;
+  document.querySelector("#clear-drawing").disabled = isBusy || blank;
+  document.querySelector("#drawing-placeholder").hidden = !blank;
 }
 
 function startDrawing(event) {
+  if (isBusy || drawingPointer !== null || (event.pointerType === "mouse" && event.button !== 0)) return;
   event.preventDefault();
   drawingCanvas.setPointerCapture(event.pointerId);
-  drawingPointer = { x: event.offsetX, y: event.offsetY };
+  drawingPointer = event.pointerId;
+  drawingStrokes.push([drawingPoint(event)]);
+  recognitionStatus.textContent = "";
+  redrawDrawing();
 }
 
 function continueDrawing(event) {
-  if (!drawingPointer) return;
-  drawingContext.beginPath();
-  drawingContext.moveTo(drawingPointer.x, drawingPointer.y);
-  drawingContext.lineTo(event.offsetX, event.offsetY);
-  drawingContext.lineWidth = Math.max(1, 1 + event.pressure * 3);
-  drawingContext.stroke();
-  drawingPointer = { x: event.offsetX, y: event.offsetY };
+  if (isBusy || drawingPointer !== event.pointerId) return;
+  const stroke = drawingStrokes[drawingStrokes.length - 1];
+  const point = drawingPoint(event);
+  drawStrokeSegment(stroke[stroke.length - 1], point, drawingCanvas.getBoundingClientRect());
+  stroke.push(point);
 }
 
-function stopDrawing() {
+function stopDrawing(event) {
+  if (drawingPointer !== event.pointerId) return;
+  if (event.type === "pointerup") continueDrawing(event);
+  if (drawingCanvas.hasPointerCapture(event.pointerId)) drawingCanvas.releasePointerCapture(event.pointerId);
   drawingPointer = null;
 }
 
 function clearDrawing() {
-  resizeDrawingCanvas();
+  drawingStrokes = [];
+  drawingPointer = null;
+  redrawDrawing();
   recognitionStatus.textContent = "";
 }
 
 function isDrawingCanvasBlank() {
-  const pixels = drawingContext.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height).data;
-  for (let index = 0; index < pixels.length; index += 4) {
-    if (pixels[index] < 250 || pixels[index + 1] < 250 || pixels[index + 2] < 250) return false;
-  }
-  return true;
+  return drawingStrokes.length === 0;
 }
