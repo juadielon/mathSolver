@@ -95,7 +95,7 @@ class GraphRequest(BaseModel):
         return self
 
 
-app = FastAPI(title="Genius Mathematical Solver", version="0.1.0")
+app = FastAPI(title="Math Solver", version="0.1.0")
 app.add_middleware(
     UploadBodyLimitMiddleware, max_body_bytes=MAX_UPLOAD_BYTES + 64 * 1024
 )
