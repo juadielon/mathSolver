@@ -55,6 +55,21 @@ Completion criteria for recognition improvements:
 
 Model-free handwriting, scratch-out gestures, and live recognition are not promised capabilities.
 
+### Evaluate stroke-based recognition
+
+Run a bounded feasibility spike for recognising pen or touch strokes directly,
+to learn whether the Write experience could become faster and more calculator-like.
+This is an investigation, not a commitment to replace image recognition
+or add live results.
+Track the spike in [issue #23](https://github.com/juadielon/mathSolver/issues/23).
+
+The spike should compare suitable candidates with the current image-based path
+using a small, reproducible set of typed and handwritten formula examples.
+Record recognition quality, latency, offline behaviour, runtime and build impact,
+licensing, and whether the result can be corrected before calculation.
+Recommend whether to prototype a candidate, retain the current approach,
+or stop; do not add a runtime dependency or change the supported UI in this spike.
+
 ## Known constraints
 
 The supported runtime is Docker only.
