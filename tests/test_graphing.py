@@ -1,4 +1,7 @@
 import math
+import string
+
+import pytest
 
 from html.parser import HTMLParser
 
@@ -8,6 +11,71 @@ from solver_app.main import app
 
 
 client = TestClient(app)
+
+
+@pytest.mark.parametrize("variable", string.ascii_letters)
+def test_graphs_every_single_letter_with_exact_markers_and_selected_labels(variable: str) -> None:
+    payload = {
+        "expression": f"{variable}^2 - 1", "variable": variable,
+        "x_min": -2, "x_max": 2, "sample_count": 101,
+        "include_derivative": True, "tangent_points": [1],
+    }
+    result = graph(payload)
+    baseline = graph({**payload, "expression": "x^2 - 1", "variable": "x"})
+    assert result["variable"] == variable
+    assert result["expression"] == f"{variable}**2 - 1"
+    assert result["derivative"]["expression"] == f"2*{variable}"
+    assert f"{variable} - 1" in result["tangents"][0]["line"]
+    assert f"{variable}-values" in result["steps"][0]
+    for key in ("samples", "roots", "extrema", "y_intercept", "asymptotes", "domain"):
+        assert result[key] == baseline[key]
+    assert result["derivative"]["samples"] == baseline["derivative"]["samples"]
+    if variable != "E":
+        inferred = graph({"expression": variable, "sample_count": 100})
+        assert inferred["variable"] == variable
+
+
+def test_graph_preserves_constant_defaults_and_explicit_euler_variable() -> None:
+    constant = graph({"expression": "E + pi", "sample_count": 100})
+    assert constant["variable"] == "x"
+    assert all(math.isclose(sample["y"], math.e + math.pi) for sample in constant["samples"])
+    selected = graph({"expression": "E", "variable": "E", "sample_count": 100})
+    assert selected["variable"] == "E"
+    assert all(sample["x"] == sample["y"] for sample in selected["samples"])
+    cancelled = graph({"expression": "Q-Q", "sample_count": 100})
+    assert cancelled["variable"] == "Q"
+    assert all(sample["y"] == 0 for sample in cancelled["samples"])
+
+
+def test_new_graph_letters_preserve_poles_nulls_and_numeric_literals() -> None:
+    result = graph({
+        "expression": "1/(Q-1)", "x_min": -2, "x_max": 3,
+        "sample_count": 501, "include_derivative": True, "tangent_points": [1],
+    })
+    assert result["variable"] == "Q"
+    assert result["asymptotes"]["markers"][0]["exact_x"] == "1"
+    assert result["samples"][300]["y"] is None
+    assert result["derivative"]["samples"][300]["y"] is None
+    assert result["tangents"][0]["status"] == "unsupported"
+    numeric = graph({"expression": "1e+3A + 0x1A", "sample_count": 100})
+    assert numeric["variable"] == "A"
+    assert numeric["expression"] == "1000*A + 26"
+    assert numeric["samples"][0]["y"] == -9974
+
+
+@pytest.mark.parametrize("payload", [
+    {"expression": "A+B"},
+    {"expression": "A+B", "variable": "A"},
+    {"expression": "AA"},
+    {"expression": "gamma(A)"},
+    {"expression": "A", "variable": "AA"},
+    {"expression": "A", "variable": "é"},
+    {"expression": "A", "variable": "A\n"},
+    {"expression": "A", "variable": 1},
+])
+def test_graph_rejects_ambiguous_and_invalid_variable_or_function_names(payload: dict) -> None:
+    response = client.post("/api/graph", json=payload)
+    assert response.status_code == 422
 
 
 def graph(payload: dict[str, object]):

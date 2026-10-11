@@ -1,9 +1,186 @@
+import string
+
+import pytest
 from fastapi.testclient import TestClient
 
 from solver_app.main import app
 
 
 client = TestClient(app)
+
+
+@pytest.mark.parametrize("variable", string.ascii_letters)
+def test_differentiates_every_single_letter_variable(variable: str) -> None:
+    result = operate({
+        "operation": "differentiate", "expression": f"2{variable}^2",
+        "variable": variable,
+    })
+    assert result["variable"] == variable
+    assert result["result"] == f"4*{variable}"
+    if variable != "E":
+        inferred = operate({"operation": "differentiate", "expression": f"{variable}^2"})
+        assert inferred["variable"] == variable
+        assert inferred["result"] == f"2*{variable}"
+
+
+def test_preserves_constants_and_allows_explicit_euler_variable() -> None:
+    constant = operate({"operation": "differentiate", "expression": "E*A + pi"})
+    selected = operate({
+        "operation": "differentiate", "expression": "E^2 + pi", "variable": "E",
+    })
+    assert constant["variable"] == "A"
+    assert constant["result"] == "E"
+    assert selected["result"] == "2*E"
+    assert operate({"operation": "integrate", "expression": "E"})["antiderivative"] == "E*x"
+    assert operate({
+        "operation": "integrate", "expression": "Q", "lower": "0", "upper": "E",
+    })["result"] == "exp(2)/2"
+
+
+def test_inference_retains_cancelled_variables_and_requires_unambiguous_selection() -> None:
+    cancelled = operate({"operation": "differentiate", "expression": "A-A"})
+    polynomial = operate({"operation": "polynomial_solve", "equation": "B-B=0"})
+    assert cancelled["variable"] == "A"
+    assert cancelled["result"] == "0"
+    assert polynomial["variable"] == "B"
+    assert polynomial["status"] == "all_values"
+    ambiguous = client.post(
+        "/api/operate", json={"operation": "differentiate", "expression": "A+B"},
+    )
+    assert ambiguous.status_code == 422
+    assert "explicitly" in ambiguous.json()["detail"]
+    explicit = operate({
+        "operation": "differentiate", "expression": "A*B", "variable": "B",
+    })
+    assert explicit["result"] == "A"
+
+
+@pytest.mark.parametrize("variable", ["a", "Q", "E"])
+def test_other_operations_use_selected_single_letters(variable: str) -> None:
+    assert operate({
+        "operation": "polynomial_solve", "equation": f"{variable}^3=8",
+        "variable": variable,
+    })["variable"] == variable
+    assert operate({
+        "operation": "exponential_solve", "equation": f"exp({variable})=3",
+        "variable": variable,
+    })["solutions"] == ["log(3)"]
+    assert operate({
+        "operation": "integrate", "expression": variable, "variable": variable,
+        "lower": "0", "upper": "2",
+    })["result"] == "2"
+    assert operate({
+        "operation": "limit", "expression": f"sin({variable})/{variable}",
+        "variable": variable, "point": "0",
+    })["result"] == "1"
+    assert operate({
+        "operation": "trig_solve", "equation": f"sin({variable})=0", "variable": variable,
+    })["variable"] == variable
+    assert operate({
+        "operation": "trig_simplify",
+        "expression": f"sin({variable})^2+cos({variable})^2", "variable": variable,
+    })["result"] == "1"
+
+
+def test_system_log_and_matrix_operations_accept_new_letters_without_changing_constants() -> None:
+    system = operate({
+        "operation": "system_solve", "equations": ["A+b=3", "A-b=1"],
+    })
+    assert system["variables"] == ["A", "b"]
+    assert system["solutions"] == [["2", "1"]]
+    euler_system = operate({
+        "operation": "system_solve", "equations": ["E+Q=3", "E-Q=1"], "variable": "E",
+    })
+    assert euler_system["variables"] == ["E", "Q"]
+    assert euler_system["solutions"] == [["2", "1"]]
+    assert operate({"operation": "log_expand", "expression": "log(A*b)"})[
+        "transformed"
+    ] == "log(A) + log(b)"
+    assert operate({
+        "operation": "matrix_determinant", "matrix": [["A", 0], [0, "E"]],
+    })["result"] == "E*A"
+    assert operate({
+        "operation": "differentiate", "expression": "1e+3A + 0x1A",
+    })["result"] == "1000"
+
+
+def test_implicit_products_and_cancelled_system_variables_are_preserved() -> None:
+    assert operate({
+        "operation": "differentiate", "expression": "A(A+1)",
+    })["result"] == "2*A + 1"
+    assert operate({
+        "operation": "differentiate", "expression": "(A+1)A",
+    })["result"] == "2*A + 1"
+    assert operate({
+        "operation": "differentiate", "expression": "(J+1)2J",
+    })["result"] == "4*J + 2"
+    assert operate({
+        "operation": "differentiate", "expression": "2E*A + 2pi",
+    })["result"] == "2*E"
+    system = operate({
+        "operation": "system_solve", "equations": ["A-A+B=1", "B=1"],
+    })
+    assert system["variables"] == ["A", "B"]
+    assert system["solutions"] == [["A", "1"]]
+
+
+def test_inferred_ode_and_euler_constant_in_system() -> None:
+    result = operate({
+        "operation": "ode_solve", "equation": "Derivative(F(Q), Q)+F(Q)=0",
+    })
+    assert result["variable"] == "Q"
+    constant = operate({
+        "operation": "system_solve", "equations": ["A=E", "A=E"],
+    })
+    assert constant["variables"] == ["A"]
+    assert constant["solutions"] == [["E"]]
+
+
+@pytest.mark.parametrize(
+    ("dependent", "independent"),
+    [("f", "r"), ("G", "T"), ("E", "Q"), ("F", "E")],
+)
+def test_ode_accepts_single_letter_dependent_and_independent_names(
+    dependent: str, independent: str
+) -> None:
+    result = operate({
+        "operation": "ode_solve",
+        "equation": f"Derivative({dependent}({independent}), {independent}) + {dependent}({independent}) = 0",
+        "variable": independent,
+    })
+    assert result["variable"] == independent
+    assert result["dependent_variable"] == dependent
+    assert result["solutions"] == [f"Eq({dependent}({independent}), C1*exp(-{independent}))"]
+
+
+@pytest.mark.parametrize("equation", [
+    "Derivative(f(Q), Q, Q) + f(Q) = 0",
+    "Derivative(f(Q), A) + f(Q) = 0",
+    "Derivative(f(Q), Q) + g(Q) = 0",
+    "Derivative(foo(Q), Q) + foo(Q) = 0",
+    "Derivative(f(Q), Q) + A*f(Q) = 0",
+])
+def test_generalised_ode_keeps_first_order_and_name_restrictions(equation: str) -> None:
+    response = client.post("/api/operate", json={"operation": "ode_solve", "equation": equation})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("variable", ["", "ab", "x1", "_", "é", "π", "A\n", 1, True])
+def test_rejects_invalid_selected_variable_names(variable: object) -> None:
+    response = client.post("/api/operate", json={
+        "operation": "differentiate", "expression": "x", "variable": variable,
+    })
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("expression", [
+    "foo(A)", "gamma(A)", "sinus(A)", "a_b", "AA", "\uff21", "\u212a", "\uff53\uff49\uff4e(A)",
+])
+def test_rejects_unsupported_function_and_symbol_names(expression: str) -> None:
+    response = client.post("/api/operate", json={
+        "operation": "differentiate", "expression": expression,
+    })
+    assert response.status_code == 422
 
 
 def operate(payload: dict[str, object]):
