@@ -3,7 +3,8 @@ from typing import Any
 
 import sympy as sp
 
-from solver_app.equations import EquationInputError, _parse_expression
+from solver_app.equations import EquationInputError
+from solver_app.operations import _parse, _variable
 
 
 _X = sp.Symbol("x")
@@ -286,7 +287,9 @@ def _asymptotes(expression: sp.Expr, lower: float, upper: float) -> dict[str, An
     }
 
 
-def _tangent(expression: sp.Expr, derivative: sp.Expr, x_value: float) -> dict[str, Any]:
+def _tangent(
+    expression: sp.Expr, derivative: sp.Expr, x_value: float, variable_name: str = "x"
+) -> dict[str, Any]:
     function = _compile(expression)
     derivative_function = _compile(derivative)
     y_value = _evaluate(function, x_value)
@@ -305,7 +308,7 @@ def _tangent(expression: sp.Expr, derivative: sp.Expr, x_value: float) -> dict[s
         "y": y_value,
         "slope": slope,
         "intercept": y_value - slope * x_value,
-        "line": f"y = {exact_y} + ({exact_slope})*(x - {x_value:g})",
+        "line": f"y = {exact_y} + ({exact_slope})*({variable_name} - {x_value:g})",
         "status": "numerical_at_requested_point",
     }
 
@@ -313,7 +316,7 @@ def _tangent(expression: sp.Expr, derivative: sp.Expr, x_value: float) -> dict[s
 def graph_function(request: dict[str, Any]) -> dict[str, Any]:
     source = request.get("expression")
     if not isinstance(source, str) or not source.strip():
-        raise EquationInputError("Enter a mathematical function of x.")
+        raise EquationInputError("Enter a mathematical function of one single-letter variable.")
     if len(source) > 512:
         raise EquationInputError("Expressions must be 512 characters or fewer.")
     lower, upper = request.get("x_min", -10), request.get("x_max", 10)
@@ -341,16 +344,19 @@ def graph_function(request: dict[str, Any]) -> dict[str, Any]:
     ):
         raise EquationInputError("Tangent points must be finite numbers inside the graph domain.")
 
-    try:
-        expression = _parse_expression(
-            source,
-            allowed_variables={"x"},
-            allow_functions=True,
-        )
-    except EquationInputError:
-        raise
+    name = request.get("variable")
+    if name is not None:
+        _variable(sp.S.Zero, name)
+    mentioned: set[str] = set()
+    original_expression = _parse(
+        source, selected_variable=name, mentioned_variables=mentioned
+    )
+    variable = _variable(original_expression, name, mentioned_variables=mentioned)
+    if original_expression.free_symbols - {variable}:
+        raise EquationInputError("Graph only one variable; the expression contains other free variables.")
+    expression = original_expression.subs(variable, _X)
     if expression.has(sp.Derivative) or expression.has(sp.core.function.AppliedUndef):
-        raise EquationInputError("Graph only explicit functions of x.")
+        raise EquationInputError("Graph only explicit functions of the selected variable.")
 
     try:
         derivative = sp.diff(expression, _X)
@@ -425,7 +431,8 @@ def graph_function(request: dict[str, Any]) -> dict[str, Any]:
     )
     return {
         "operation": "graph",
-        "expression": sp.sstr(expression),
+        "expression": sp.sstr(original_expression),
+        "variable": str(variable),
         "domain": {"x_min": lower, "x_max": upper},
         "sample_count": count,
         "samples": samples,
@@ -434,14 +441,17 @@ def graph_function(request: dict[str, Any]) -> dict[str, Any]:
         "extrema": {"status": extrema_status if extrema else "none_detected", "markers": extrema},
         "asymptotes": asymptotes,
         "derivative": {
-            "expression": sp.sstr(derivative),
+            "expression": sp.sstr(derivative.subs(_X, variable)),
             "samples": derivative_samples,
         }
         if derivative_samples is not None
         else None,
-        "tangents": [_tangent(expression, derivative, float(point)) for point in tangent_points],
+        "tangents": [
+            _tangent(expression, derivative, float(point), str(variable))
+            for point in tangent_points
+        ],
         "steps": [
-            f"Sample {sp.sstr(expression)} at {count} evenly spaced x-values from {lower:g} to {upper:g}.",
+            f"Sample {sp.sstr(original_expression)} at {count} evenly spaced {variable}-values from {lower:g} to {upper:g}.",
             "Markers labelled exact are symbolic; sampled estimates are numerical and may miss closely spaced features.",
             "Undefined or non-real sample values are left blank so discontinuities are not joined.",
         ],

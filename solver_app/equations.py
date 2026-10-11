@@ -1,13 +1,15 @@
 import ast
+import io
 import math
-import re
+import string
+import tokenize
 from fractions import Fraction
 
 import sympy as sp
 
 
 _VARIABLE = sp.Symbol("x")
-_SUPPORTED_VARIABLES = {"x", "y", "z", "t"}
+_SUPPORTED_VARIABLES = set(string.ascii_letters)
 _BINARY_OPERATORS = {
     ast.Add: lambda left, right: left + right,
     ast.Sub: lambda left, right: left - right,
@@ -47,25 +49,42 @@ def _normalise_expression(
     allow_variable_parentheses: bool = True,
 ) -> str:
     variables = {"x"} if variables is None else variables
-    variable_pattern = "|".join(
-        re.escape(name) for name in sorted(variables, key=len, reverse=True)
-    )
     source = source.replace("^", "**")
-    source = re.sub(
-        rf"(?<=[0-9)])\s*(?=(?:{variable_pattern})\b)", "*", source
-    )
-    if allow_variable_parentheses:
-        source = re.sub(
-            rf"(?<=(?:{variable_pattern}))\s*(?=\()", "*", source
-        )
-    source = re.sub(
-        rf"(?<=[0-9])\s*(?=\()", "*", source
-    )
-    if allow_variable_parentheses:
-        source = re.sub(
-            rf"(?<=\))\s*(?=\(|[0-9]|(?:{variable_pattern})\b)", "*", source
-        )
-    return source
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except (tokenize.TokenError, IndentationError) as error:
+        raise EquationInputError("Enter a valid mathematical expression.") from error
+    output: list[tuple[int, str]] = []
+    previous = None
+    for token in tokens:
+        if token.type == tokenize.NAME and not token.string.isascii():
+            raise EquationInputError("Variable and function names must use ASCII Latin letters.")
+        # Python tokenises 2j as a complex number; here j is a selectable variable.
+        if token.type == tokenize.NUMBER and token.string[-1:] in {"j", "J"}:
+            name = token.string[-1]
+            if name in variables:
+                if previous is not None and previous.string == ")":
+                    output.append((tokenize.OP, "*"))
+                output.extend([
+                    (tokenize.NUMBER, token.string[:-1]),
+                    (tokenize.OP, "*"),
+                ])
+                token = token._replace(type=tokenize.NAME, string=name)
+                previous = None
+        if previous is not None:
+            starts_variable = token.type == tokenize.NAME and token.string in variables
+            ends_variable = previous.type == tokenize.NAME and previous.string in variables
+            if (
+                (previous.type == tokenize.NUMBER and (starts_variable or token.string == "("))
+                or (previous.string == ")" and (
+                    starts_variable or token.type == tokenize.NUMBER or token.string == "("
+                ))
+                or (allow_variable_parentheses and ends_variable and token.string == "(")
+            ):
+                output.append((tokenize.OP, "*"))
+        output.append((token.type, token.string))
+        previous = token
+    return tokenize.untokenize(output)
 
 
 def _preflight_expression(
@@ -73,6 +92,7 @@ def _preflight_expression(
     variables: set[str],
     allow_functions: bool,
     legacy_mode: bool,
+    allow_dependent_functions: bool = False,
 ) -> None:
     remaining_nodes = _MAX_AST_NODES
 
@@ -101,11 +121,11 @@ def _preflight_expression(
             return value, bit_size(value)
 
         if isinstance(node, ast.Name):
-            if node.id in {"pi", "E"} and allow_functions:
+            if node.id in {"pi", "E"} and allow_functions and node.id not in variables:
                 return None, 1
             if node.id not in variables:
                 if legacy_mode and variables == {"x"}:
-                    raise EquationInputError("Only the variable x is supported in this phase.")
+                    raise EquationInputError("Only the variable x is supported.")
                 raise EquationInputError(
                     f"Only these variables are supported: {', '.join(sorted(variables))}."
                 )
@@ -119,7 +139,7 @@ def _preflight_expression(
             if node.func.id not in _FUNCTION_ARITIES and node.func.id not in {
                 "y",
                 "Derivative",
-            }:
+            } and not (allow_dependent_functions and node.func.id in _SUPPORTED_VARIABLES):
                 raise EquationInputError("That function is not supported.")
             arguments = [inspect(argument, depth + 1) for argument in node.args]
             return None, max((bits for _, bits in arguments), default=1)
@@ -210,26 +230,32 @@ def _parse_expression(
     allow_functions: bool = False,
     legacy_mode: bool | None = None,
     mentioned_variables: set[str] | None = None,
+    allow_dependent_functions: bool = False,
 ) -> sp.Expr:
     if legacy_mode is None:
         legacy_mode = allowed_variables is None and not allow_functions
     variables = {"x"} if allowed_variables is None else allowed_variables
     normalised_source = _normalise_expression(
         source.strip(),
-        variables,
-        allow_variable_parentheses=not allow_functions,
+        variables | {"pi", "E"} if allow_functions else variables,
+        allow_variable_parentheses=not allow_dependent_functions,
     )
     try:
         parsed = ast.parse(normalised_source, mode="eval")
     except (SyntaxError, ValueError, RecursionError) as error:
         raise EquationInputError("Enter a valid mathematical expression.") from error
 
-    _preflight_expression(parsed.body, variables, allow_functions, legacy_mode)
+    _preflight_expression(
+        parsed.body, variables, allow_functions, legacy_mode, allow_dependent_functions
+    )
     if mentioned_variables is not None:
+        function_names = {
+            id(node.func) for node in ast.walk(parsed.body) if isinstance(node, ast.Call)
+        }
         mentioned_variables.update(
             node.id
             for node in ast.walk(parsed.body)
-            if isinstance(node, ast.Name) and node.id in variables
+            if isinstance(node, ast.Name) and node.id in variables and id(node) not in function_names
         )
 
     def build(node: ast.AST, depth: int = 0) -> sp.Expr:
@@ -242,11 +268,11 @@ def _parse_expression(
             return sp.Rational(str(node.value))
 
         if isinstance(node, ast.Name):
-            if node.id in {"pi", "E"} and allow_functions:
+            if node.id in {"pi", "E"} and allow_functions and node.id not in variables:
                 return sp.pi if node.id == "pi" else sp.E
             if node.id not in variables:
                 if legacy_mode and variables == {"x"}:
-                    raise EquationInputError("Only the variable x is supported in this phase.")
+                    raise EquationInputError("Only the variable x is supported.")
                 raise EquationInputError(
                     f"Only these variables are supported: {', '.join(sorted(variables))}."
                 )
@@ -276,8 +302,11 @@ def _parse_expression(
                     "Abs": sp.Abs,
                 }
                 return functions[node.func.id](*arguments)
-            if node.func.id == "y" and len(arguments) == 1:
-                return sp.Function("y")(*arguments)
+            if (
+                node.func.id == "y"
+                or (allow_dependent_functions and node.func.id in _SUPPORTED_VARIABLES)
+            ) and len(arguments) == 1:
+                return sp.Function(node.func.id)(*arguments)
             if node.func.id == "Derivative" and len(arguments) >= 2:
                 try:
                     return sp.Derivative(arguments[0], *arguments[1:])
@@ -358,7 +387,7 @@ def solve_equation(equation: str) -> dict[str, object]:
 
     if len(mentioned_variables) > 1:
         raise EquationInputError(
-            "This solver accepts one variable at a time (x, y, z, or t). "
+            "This solver accepts one single-letter variable at a time. "
             "Use the system solver for multiple variables."
         )
     variable_name = next(iter(mentioned_variables), "x")
@@ -392,7 +421,7 @@ def solve_equation(equation: str) -> dict[str, object]:
             "steps": ["The equation reduces to a non-zero constant, so it has no solution."],
         }
     if degree > 2:
-        raise EquationInputError("This phase supports linear and quadratic equations only.")
+        raise EquationInputError("This solver supports linear and quadratic equations only.")
 
     expression = polynomial.as_expr()
     solutions = sp.solve(expression, variable)

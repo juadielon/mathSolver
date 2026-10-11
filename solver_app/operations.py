@@ -3,25 +3,44 @@ from typing import Any
 
 import sympy as sp
 
-from solver_app.equations import EquationInputError, _parse_expression
+from solver_app.equations import EquationInputError, _SUPPORTED_VARIABLES, _parse_expression
 
 
-_VARIABLE_NAMES = {"x", "y", "z", "t"}
+_VARIABLE_NAMES = _SUPPORTED_VARIABLES
 
 
-def _parse(source: str, variables: set[str] | None = None) -> sp.Expr:
+def _parse(
+    source: str,
+    variables: set[str] | None = None,
+    *,
+    selected_variable: str | None = None,
+    allow_dependent_functions: bool = False,
+    mentioned_variables: set[str] | None = None,
+) -> sp.Expr:
     if not source or not source.strip():
         raise EquationInputError("Enter a mathematical expression.")
     if len(source) > 512:
         raise EquationInputError("Expressions must be 512 characters or fewer.")
     return _parse_expression(
         source,
-        allowed_variables=variables or _VARIABLE_NAMES,
+        allowed_variables=(
+            variables if variables is not None
+            else _VARIABLE_NAMES if selected_variable == "E"
+            else _VARIABLE_NAMES - {"E"}
+        ),
         allow_functions=True,
+        allow_dependent_functions=allow_dependent_functions,
+        mentioned_variables=mentioned_variables,
     )
 
 
-def _parse_equation(equation: str) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
+def _parse_equation(
+    equation: str,
+    selected_variable: str | None = None,
+    *,
+    allow_dependent_functions: bool = False,
+    mentioned_variables: set[str] | None = None,
+) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
     if not equation or not equation.strip():
         raise EquationInputError("Enter an equation.")
     if len(equation) > 512:
@@ -31,18 +50,52 @@ def _parse_equation(equation: str) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
     left_source, right_source = equation.split("=", maxsplit=1)
     if not left_source.strip() or not right_source.strip():
         raise EquationInputError("Enter an expression on both sides of the equals sign.")
-    left = _parse(left_source)
-    right = _parse(right_source)
+    left = _parse(
+        left_source, selected_variable=selected_variable,
+        allow_dependent_functions=allow_dependent_functions,
+        mentioned_variables=mentioned_variables,
+    )
+    right = _parse(
+        right_source, selected_variable=selected_variable,
+        allow_dependent_functions=allow_dependent_functions,
+        mentioned_variables=mentioned_variables,
+    )
     return left, right, left - right
 
 
-def _variable(expression: sp.Expr, name: str, require_present: bool = True) -> sp.Symbol:
-    if name not in _VARIABLE_NAMES:
-        raise EquationInputError("Choose x, y, z, or t as the variable.")
+def _variable(
+    expression: sp.Expr, name: str | None,
+    mentioned_variables: set[str] | None = None,
+) -> sp.Symbol:
+    if name is None:
+        names = {symbol.name for symbol in expression.free_symbols}
+        if not names:
+            names = mentioned_variables or set()
+        if len(names) > 1:
+            raise EquationInputError("Choose a variable explicitly when more than one variable is present.")
+        name = next(iter(names), "x")
+    if not isinstance(name, str) or name not in _VARIABLE_NAMES:
+        raise EquationInputError("Choose one Latin letter (a-z or A-Z) as the variable.")
     variable = sp.Symbol(name)
-    if require_present and variable not in expression.free_symbols:
-        raise EquationInputError(f"The expression does not contain {name}.")
     return variable
+
+
+def _selected_expression(
+    request: dict[str, Any], *, equation: bool = False
+) -> tuple[sp.Expr, sp.Symbol]:
+    source = request.get("equation" if equation else "expression")
+    if not isinstance(source, str):
+        raise EquationInputError(
+            "This operation requires an equation string." if equation
+            else "This operation requires an expression string."
+        )
+    mentioned: set[str] = set()
+    name = request.get("variable")
+    expression = (
+        _parse_equation(source, name, mentioned_variables=mentioned)[2]
+        if equation else _parse(source, selected_variable=name, mentioned_variables=mentioned)
+    )
+    return expression, _variable(expression, name, mentioned_variables=mentioned)
 
 
 def _result(operation: str, value: Any, steps: list[str], **details: Any) -> dict[str, Any]:
@@ -53,8 +106,7 @@ def _solve_polynomial(request: dict[str, Any]) -> dict[str, Any]:
     equation = request.get("equation")
     if not isinstance(equation, str):
         raise EquationInputError("This operation requires an equation string.")
-    _, _, expression = _parse_equation(equation)
-    variable = _variable(expression, request.get("variable", "x"), require_present=False)
+    expression, variable = _selected_expression(request, equation=True)
     try:
         polynomial = sp.Poly(expression, variable)
     except (sp.PolynomialError, ValueError) as error:
@@ -94,10 +146,16 @@ def _solve_system(request: dict[str, Any]) -> dict[str, Any]:
         raise EquationInputError("Enter between 2 and 8 linear equations.")
     if not all(isinstance(equation, str) for equation in equations):
         raise EquationInputError("Each system equation must be a string.")
-    expressions = [_parse_equation(equation)[2] for equation in equations]
-    variables = set().union(*(expression.free_symbols for expression in expressions))
+    mentioned: set[str] = set()
+    expressions = [
+        _parse_equation(
+            equation, request.get("variable"), mentioned_variables=mentioned
+        )[2]
+        for equation in equations
+    ]
+    variables = {sp.Symbol(name) for name in mentioned}
     if not variables or len(variables) > 8:
-        raise EquationInputError("A system must contain between 1 and 4 variables (x, y, z, or t).")
+        raise EquationInputError("A system must contain between 1 and 8 single-letter variables.")
     ordered_variables = sorted(variables, key=lambda symbol: symbol.name)
     for expression in expressions:
         try:
@@ -136,7 +194,7 @@ def _log_transform(request: dict[str, Any], expand: bool) -> dict[str, Any]:
     expression_text = request.get("expression")
     if not isinstance(expression_text, str):
         raise EquationInputError("This operation requires an expression string.")
-    expression = _parse(expression_text)
+    expression = _parse(expression_text, selected_variable=request.get("variable"))
     if not expression.has(sp.log):
         raise EquationInputError("The expression must contain a logarithm.")
     transformed = (
@@ -162,8 +220,7 @@ def _solve_exponential(request: dict[str, Any]) -> dict[str, Any]:
     equation = request.get("equation")
     if not isinstance(equation, str):
         raise EquationInputError("This operation requires an equation string.")
-    _, _, expression = _parse_equation(equation)
-    variable = _variable(expression, request.get("variable", "x"))
+    expression, variable = _selected_expression(request, equation=True)
     powers_with_variable_exponent = [
         power for power in expression.atoms(sp.Pow) if power.exp.has(variable)
     ]
@@ -211,8 +268,7 @@ def _differentiate(request: dict[str, Any]) -> dict[str, Any]:
     expression_text = request.get("expression")
     if not isinstance(expression_text, str):
         raise EquationInputError("This operation requires an expression string.")
-    expression = _parse(expression_text)
-    variable = _variable(expression, request.get("variable", "x"))
+    expression, variable = _selected_expression(request)
     order = request.get("order", 1)
     if not isinstance(order, int) or isinstance(order, bool) or not 1 <= order <= 10:
         raise EquationInputError("Derivative order must be an integer from 1 to 10.")
@@ -236,8 +292,7 @@ def _integrate(request: dict[str, Any]) -> dict[str, Any]:
     expression_text = request.get("expression")
     if not isinstance(expression_text, str):
         raise EquationInputError("This operation requires an expression string.")
-    expression = _parse(expression_text)
-    variable = _variable(expression, request.get("variable", "x"))
+    expression, variable = _selected_expression(request)
     lower_source, upper_source = request.get("lower"), request.get("upper")
     definite = lower_source is not None or upper_source is not None
     if definite and (lower_source is None or upper_source is None):
@@ -298,8 +353,7 @@ def _limit(request: dict[str, Any]) -> dict[str, Any]:
     point_source = request.get("point")
     if not isinstance(expression_text, str) or not isinstance(point_source, str):
         raise EquationInputError("A limit requires expression and point strings.")
-    expression = _parse(expression_text)
-    variable = _variable(expression, request.get("variable", "x"))
+    expression, variable = _selected_expression(request)
     point = _parse_bound(point_source)
     direction = request.get("direction", "both")
     if direction not in {"both", "+", "-"}:
@@ -346,10 +400,12 @@ def _solve_ode(request: dict[str, Any]) -> dict[str, Any]:
     equation = request.get("equation")
     if not isinstance(equation, str):
         raise EquationInputError("This operation requires an equation string.")
-    _, _, expression = _parse_equation(equation)
+    _, _, expression = _parse_equation(
+        equation, request.get("variable"), allow_dependent_functions=True
+    )
     dependent_functions = expression.atoms(sp.core.function.AppliedUndef)
     if len(dependent_functions) != 1:
-        raise EquationInputError("Use one dependent function, written as y(x), in the first-order ODE.")
+        raise EquationInputError("Use one single-letter dependent function, such as y(x), in the first-order ODE.")
     function = next(iter(dependent_functions))
     if len(function.args) != 1 or not isinstance(function.args[0], sp.Symbol):
         raise EquationInputError("Write the dependent function with one variable, such as y(x).")
@@ -358,6 +414,11 @@ def _solve_ode(request: dict[str, Any]) -> dict[str, Any]:
         raise EquationInputError("Only first-order derivatives of the dependent function are supported.")
     if any(derivative.variables != (function.args[0],) for derivative in derivatives):
         raise EquationInputError("Differentiate the dependent function with respect to its argument.")
+    independent = function.args[0]
+    if request.get("variable") is not None and str(independent) != request["variable"]:
+        raise EquationInputError("The selected variable must match the dependent function's argument.")
+    if expression.free_symbols - {independent}:
+        raise EquationInputError("The ODE must contain only its independent variable and dependent function.")
     try:
         solution = sp.dsolve(sp.Eq(expression, 0), function)
     except (NotImplementedError, ValueError, sp.SympifyError) as error:
@@ -374,6 +435,8 @@ def _solve_ode(request: dict[str, Any]) -> dict[str, Any]:
             "Solve symbolically for the dependent function, including an arbitrary constant where required.",
         ],
         equation=equation,
+        variable=str(independent),
+        dependent_variable=str(function.func),
         solutions=solution_text,
     )
 
@@ -382,8 +445,7 @@ def _trig_solve(request: dict[str, Any]) -> dict[str, Any]:
     equation = request.get("equation")
     if not isinstance(equation, str):
         raise EquationInputError("This operation requires an equation string.")
-    _, _, expression = _parse_equation(equation)
-    variable = _variable(expression, request.get("variable", "x"))
+    expression, variable = _selected_expression(request, equation=True)
     if not expression.has(sp.sin, sp.cos, sp.tan):
         raise EquationInputError("The equation must contain a trigonometric function.")
     solutions = sp.solveset(expression, variable, domain=sp.S.Reals)
@@ -406,7 +468,7 @@ def _trig_simplify(request: dict[str, Any]) -> dict[str, Any]:
     expression_text = request.get("expression")
     if not isinstance(expression_text, str):
         raise EquationInputError("This operation requires an expression string.")
-    expression = _parse(expression_text)
+    expression = _parse(expression_text, selected_variable=request.get("variable"))
     if not expression.has(sp.sin, sp.cos, sp.tan):
         raise EquationInputError("The expression must contain a trigonometric function.")
     simplified = sp.trigsimp(expression)
@@ -435,7 +497,7 @@ def _matrix(request: dict[str, Any]) -> sp.Matrix:
         for entry in row:
             if isinstance(entry, bool) or not isinstance(entry, (str, int, float)):
                 raise EquationInputError("Matrix entries must be numbers or safe expression strings.")
-            parsed_row.append(_parse(str(entry)))
+            parsed_row.append(_parse(str(entry), selected_variable=request.get("variable")))
         parsed_rows.append(parsed_row)
     return sp.Matrix(parsed_rows)
 
@@ -486,6 +548,9 @@ _OPERATIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 
 
 def operate(request: dict[str, Any]) -> dict[str, Any]:
+    name = request.get("variable")
+    if name is not None and (not isinstance(name, str) or name not in _VARIABLE_NAMES):
+        raise EquationInputError("Choose one Latin letter (a-z or A-Z) as the variable.")
     operation = request.get("operation")
     handler = _OPERATIONS.get(operation) if isinstance(operation, str) else None
     if handler is None:
