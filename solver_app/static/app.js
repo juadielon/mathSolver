@@ -179,7 +179,8 @@ function updateOperationFields() {
   fields.equations.hidden = operation !== "system_solve";
   fields.expression.hidden = !isExpression;
   fields.matrix.hidden = !isMatrix;
-  fields.variable.hidden = !["polynomial_solve", "exponential_solve", "differentiate", "integrate", "limit", "trig_solve", "graph"].includes(operation);
+  fields.variable.hidden = !["polynomial_solve", "exponential_solve", "differentiate", "integrate", "limit", "ode_solve", "trig_solve", "graph"].includes(operation);
+  if (operation === "ode_solve") document.querySelector("#variable").value = "";
   fields.order.hidden = operation !== "differentiate";
   fields.point.hidden = operation !== "limit";
   fields.direction.hidden = operation !== "limit";

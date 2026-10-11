@@ -41,6 +41,64 @@ test("empty operation answer lists display no solution", () => {
   assert.equal(formatValue([]), "No solution");
 });
 
+test("ODEs expose variable selection and do not reuse a previous selection", () => {
+  const variableInput = { value: "Q" };
+  const operationSelect = { value: "ode_solve", selectedOptions: [{ textContent: "Solve a first-order differential equation" }] };
+  const fields = Object.fromEntries(
+    ["equation", "equations", "expression", "matrix", "variable", "order", "point", "direction", "bounds", "graph"]
+      .map((name) => [name, { hidden: false }]),
+  );
+  const elements = {
+    "#variable": variableInput,
+    "#input-help": { textContent: "" },
+    "#calculation-label": { textContent: "" },
+  };
+  const context = {
+    operationSelect,
+    equationInput: { value: "Derivative(F(E), E) + F(E) = 0", required: false, placeholder: "" },
+    equationsInput: { required: false },
+    expressionInput: { required: false, placeholder: "" },
+    matrixInput: { required: false },
+    fields,
+    examples: { ode_solve: ["", ""] },
+    inputMethods: { write: { disabled: false }, upload: { disabled: false } },
+    results: { hidden: false },
+    document: { querySelector: (selector) => elements[selector] },
+    setInputMode() {},
+    hideError() {},
+  };
+  const updateOperationFields = source.slice(
+    source.indexOf("function updateOperationFields()"),
+    source.indexOf("\nfunction setInputMode("),
+  );
+  const buildRequest = source.slice(
+    source.indexOf("function buildRequest("),
+    source.indexOf("\n// A hidden field"),
+  );
+  const chosenVariable = source.slice(
+    source.indexOf("function chosenVariable()"),
+    source.indexOf("\nfunction buildGraphRequest("),
+  );
+  const api = runInNewContext(
+    `${updateOperationFields}\n${buildRequest}\n${chosenVariable}\n({ updateOperationFields, buildRequest });`,
+    context,
+  );
+
+  api.updateOperationFields();
+  assert.equal(fields.variable.hidden, false);
+  assert.deepEqual({ ...api.buildRequest("ode_solve") }, {
+    operation: "ode_solve",
+    equation: "Derivative(F(E), E) + F(E) = 0",
+  });
+
+  variableInput.value = "E";
+  assert.deepEqual({ ...api.buildRequest("ode_solve") }, {
+    operation: "ode_solve",
+    equation: "Derivative(F(E), E) + F(E) = 0",
+    variable: "E",
+  });
+});
+
 test("identity and inconsistent result messages stay unchanged", () => {
   assert.equal(
     formatSolutions({ status: "all_reals", variable: "y", solutions: [] }),
