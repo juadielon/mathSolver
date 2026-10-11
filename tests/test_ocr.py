@@ -158,7 +158,7 @@ def test_bundled_ocr_recognises_reported_handwritten_equations(
     )
     assert solved.status_code == 200, solved.text
     assert solved.json()["variable"] == variable
-    assert solution in solved.json()["solutions"]
+    assert solved.json()["solutions"] == [solution]
 
 
 def test_ocr_recognised_implicit_products_solve_for_their_variables(monkeypatch) -> None:
