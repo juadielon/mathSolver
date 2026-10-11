@@ -17,6 +17,22 @@ def test_solves_linear_equation_with_steps() -> None:
     assert len(result["steps"]) == 2
 
 
+@pytest.mark.parametrize("variable", ["x", "y", "z", "t"])
+def test_solves_linear_equation_for_each_supported_variable(variable: str) -> None:
+    result = solve_equation(f"2{variable} + 1 = 5")
+
+    assert result["variable"] == variable
+    assert result["solutions"] == ["2"]
+
+
+def test_solves_quadratic_equation_in_y() -> None:
+    result = solve_equation("y^2 - 5y + 6 = 0")
+
+    assert result["variable"] == "y"
+    assert result["solutions"] == ["2", "3"]
+    assert any("Apply the quadratic formula: y =" in step for step in result["steps"])
+
+
 def test_solves_quadratic_with_real_roots() -> None:
     result = solve_equation("x^2 - 5x + 6 = 0")
 
@@ -79,6 +95,7 @@ def test_api_rejects_rational_sum_growth_before_solution_formatting() -> None:
         "x + 1",
         "x^3 = 1",
         "x^9 = 1",
+        "a = 1",
         "1 / 0 = x",
         "__import__('os') = 0",
         "x.__class__ = 0",
@@ -116,3 +133,42 @@ def test_api_solves_equation_and_returns_validation_errors() -> None:
     assert "detail" in invalid.json()
     assert invalid_domain.status_code == 422
     assert excessive.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("equation", "solution"),
+    [
+        ("14y - 2(6y + 1) = 8", "5"),
+        ("6y = 8", "4/3"),
+    ],
+)
+def test_api_solves_linear_equations_in_y(equation: str, solution: str) -> None:
+    response = client.post("/api/solve", json={"equation": equation})
+
+    assert response.status_code == 200
+    assert response.json()["variable"] == "y"
+    assert response.json()["solutions"] == [solution]
+
+
+@pytest.mark.parametrize("equation", ["x + y = 3", "x - x + y = 3", "x = x + y - y"])
+def test_api_rejects_equations_with_multiple_variables(equation: str) -> None:
+    response = client.post("/api/solve", json={"equation": equation})
+
+    assert response.status_code == 422
+    assert "system solver" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("equation", ["y = 0x10", "0x10 = y", "2y = 0x20"])
+def test_api_distinguishes_hexadecimal_constants_from_variables(equation: str) -> None:
+    response = client.post("/api/solve", json={"equation": equation})
+
+    assert response.status_code == 200
+    assert response.json()["variable"] == "y"
+    assert response.json()["solutions"] == ["16"]
+
+
+def test_preserves_variable_name_when_all_variable_terms_cancel() -> None:
+    result = solve_equation("y - y = 0x0")
+
+    assert result["variable"] == "y"
+    assert result["status"] == "all_reals"

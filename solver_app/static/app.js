@@ -36,7 +36,7 @@ let graphDrag = null;
 let drawingPointer = null;
 
 const examples = {
-  equation_solve: ["x^2 + 4 = 0", "Linear or quadratic equation in x."],
+  equation_solve: ["x^2 + 4 = 0", "Linear or quadratic equation in x, y, z, or t."],
   polynomial_solve: ["x^3 - 6x^2 + 11x - 6 = 0", "Polynomial equations through degree 8."],
   system_solve: ["", "Enter one linear equation per line."],
   log_expand: ["log(x*y)", "Use log(...), exp(...), sin(...), cos(...), and related functions."],
@@ -468,7 +468,7 @@ function formatValue(value) {
 function formatSolutions(solution) {
   if (solution.status === "all_reals") return "Every real number is a solution";
   if (solution.status === "no_solution") return "No solution";
-  return solution.solutions.map((root) => `x = ${root}`).join("  ·  ");
+  return solution.solutions.map((root) => `${solution.variable} = ${root}`).join("  ·  ");
 }
 
 function setLoading(isLoading) {
