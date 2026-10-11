@@ -9,7 +9,9 @@ const formatter = source.slice(
   source.indexOf("function formatSolutions("),
   source.indexOf("function setLoading("),
 );
-const formatSolutions = runInNewContext(`${formatter}\nformatSolutions;`);
+const { formatSolutions, formatValue } = runInNewContext(
+  `${formatter}\n({ formatSolutions, formatValue });`,
+);
 
 test("standard solver results display the returned variable", () => {
   for (const variable of ["x", "y", "z", "t"]) {
@@ -25,6 +27,14 @@ test("quadratic results label every root with the returned variable", () => {
     formatSolutions({ status: "solved", variable: "y", solutions: ["2", "3"] }),
     "y = 2  ·  y = 3",
   );
+});
+
+test("operation results show equalities as readable equations", () => {
+  assert.equal(formatValue(["Eq(y(x), C1*exp(-x))"]), "y(x) = C1*exp(-x)");
+  assert.equal(formatValue("Eq(log(x, 2), f(a, b))"), "log(x, 2) = f(a, b)");
+  assert.equal(formatValue(["pi/6", "5*pi/6"]), "pi/6  ·  5*pi/6");
+  assert.equal(formatValue("2*x"), "2*x");
+  assert.equal(formatValue([["1", "0"], ["0", "1"]]), '[["1","0"],["0","1"]]');
 });
 
 test("identity and inconsistent result messages stay unchanged", () => {

@@ -522,7 +522,25 @@ function formatSolutions(solution) {
 }
 
 function formatValue(value) {
-  return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value === "string") return formatEquality(value);
+  // Lists of answers read better inline; matrices keep their row structure.
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value.map(formatEquality).join("  ·  ");
+  }
+  return JSON.stringify(value);
+}
+
+function formatEquality(text) {
+  if (!text.startsWith("Eq(") || !text.endsWith(")")) return text;
+  let depth = 0;
+  for (let index = 3; index < text.length - 1; index += 1) {
+    if (text[index] === "(") depth += 1;
+    if (text[index] === ")") depth -= 1;
+    if (text[index] === "," && depth === 0) {
+      return `${text.slice(3, index).trim()} = ${text.slice(index + 1, -1).trim()}`;
+    }
+  }
+  return text;
 }
 
 function setLoading(isLoading) {
