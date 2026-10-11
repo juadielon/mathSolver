@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-AU">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,73 +15,93 @@
           <span class="brand-mark" aria-hidden="true">m</span>
           <span>Math Solver</span>
         </a>
-        <span class="phase-label">Symbolic maths · Phase 4</span>
       </header>
 
       <section class="solver-card" aria-labelledby="page-title">
-        <p class="eyebrow">A clearer way through the maths</p>
-        <h1 id="page-title">Solve an equation, step by step.</h1>
-        <p class="intro">Choose an operation, enter your expression, and get an exact symbolic result with working.</p>
+        <h1 id="page-title">Your maths, worked out.</h1>
+        <p class="intro">Type an equation, or write it with a finger, mouse or stylus.</p>
 
-        <section class="visual-input" aria-labelledby="visual-input-title">
-          <h2 id="visual-input-title">Add maths from an image</h2>
-          <p class="input-help">Upload a formula or draw one below. Check the recognised text before calculating.</p>
-          <label for="image-upload">Image (PNG, JPEG, or WebP; up to 8 MiB)</label>
-          <input id="image-upload" type="file" accept="image/png,image/jpeg,image/webp">
-          <label for="drawing-canvas">Or draw an equation or expression</label>
-          <div class="drawing-canvas-wrap">
-            <canvas id="drawing-canvas" aria-label="Draw an equation or expression with a mouse, finger, or stylus"></canvas>
+        <div class="input-methods" role="group" aria-label="Input method">
+          <button id="type-input" type="button" aria-pressed="true" aria-controls="solver-form">Type</button>
+          <button id="write-input" type="button" aria-pressed="false" aria-controls="drawing-input">Write</button>
+          <button id="upload-input" type="button" aria-pressed="false" aria-controls="upload-panel">Upload</button>
+        </div>
+
+        <section id="visual-input" class="visual-input" aria-label="Handwriting and image input" hidden>
+          <div id="drawing-input" hidden>
+            <p id="drawing-help" class="input-help">Write one equation or expression. Use Undo to remove your last stroke.</p>
+            <div class="drawing-canvas-wrap">
+              <canvas id="drawing-canvas" aria-label="Write maths with a finger, mouse or stylus. Keyboard users can use Type instead." aria-describedby="drawing-help"></canvas>
+              <span id="drawing-placeholder" class="drawing-placeholder" aria-hidden="true">Write your maths here</span>
+            </div>
+            <div class="drawing-actions">
+              <button id="undo-drawing" type="button" class="secondary-button" disabled>Undo</button>
+              <button id="clear-drawing" type="button" class="secondary-button" disabled>Clear</button>
+            </div>
+          </div>
+          <div id="upload-panel" hidden>
+            <label for="image-upload">Choose a formula image</label>
+            <input id="image-upload" type="file" accept="image/png,image/jpeg,image/webp" aria-describedby="upload-help">
+            <p id="upload-help" class="input-help">PNG, JPEG or WebP, up to 8 MiB. Crop to one formula.</p>
           </div>
           <div class="visual-actions">
-            <button id="clear-drawing" type="button" class="secondary-button">Clear drawing</button>
             <button id="recognise-input" type="button" class="secondary-button">Recognise maths</button>
+            <span class="input-help">Check the text below before calculating.</span>
           </div>
-          <p id="recognition-status" class="input-help" aria-live="polite"></p>
         </section>
+        <p id="recognition-status" class="input-help" role="status" aria-live="polite"></p>
 
         <form id="solver-form">
-          <label for="operation">Operation</label>
-          <select id="operation" name="operation">
-            <option value="equation_solve">Linear or quadratic equation (Phase 1)</option>
-            <option value="polynomial_solve">Polynomial equation</option>
-            <option value="system_solve">System of linear equations</option>
-            <option value="log_expand">Expand logarithms</option>
-            <option value="log_condense">Condense logarithms</option>
-            <option value="exponential_solve">Exponential equation</option>
-            <option value="differentiate">Differentiate</option>
-            <option value="integrate">Integrate</option>
-            <option value="limit">Limit</option>
-            <option value="ode_solve">First-order ODE</option>
-            <option value="trig_solve">Trigonometric equation</option>
-            <option value="trig_simplify">Simplify trigonometric identity</option>
-            <option value="matrix_determinant">Matrix determinant</option>
-            <option value="matrix_rref">Matrix RREF</option>
-            <option value="matrix_inverse">Matrix inverse</option>
-            <option value="graph">Graph a function</option>
-          </select>
-
           <div id="equation-field" class="operation-field">
             <label for="equation">Equation</label>
-            <input id="equation" name="equation" type="text" value="x^2 + 4 = 0" maxlength="512" autocomplete="off" spellcheck="false">
+            <input id="equation" name="equation" type="text" placeholder="2x + 3 = 7" maxlength="512" autocomplete="off" spellcheck="false" aria-describedby="input-help">
           </div>
           <div id="equations-field" class="operation-field" hidden>
             <label for="equations">Equations (one per line)</label>
-            <textarea id="equations" rows="3" spellcheck="false">x + y = 3
-x - y = 1</textarea>
+            <textarea id="equations" rows="3" spellcheck="false" placeholder="x + y = 3&#10;x - y = 1" aria-describedby="input-help"></textarea>
           </div>
           <div id="expression-field" class="operation-field" hidden>
             <label for="expression">Expression</label>
-            <input id="expression" name="expression" type="text" maxlength="512" autocomplete="off" spellcheck="false">
+            <input id="expression" name="expression" type="text" maxlength="512" autocomplete="off" spellcheck="false" aria-describedby="input-help">
           </div>
           <div id="matrix-field" class="operation-field" hidden>
             <label for="matrix">Matrix (JSON rows)</label>
-            <textarea id="matrix" rows="3" spellcheck="false">[[1, 2], [3, 4]]</textarea>
+            <textarea id="matrix" rows="3" spellcheck="false" placeholder="[[1, 2], [3, 4]]" aria-describedby="input-help"></textarea>
           </div>
-          <div id="variable-field" class="operation-field" hidden>
-            <label for="variable">Variable</label>
-            <select id="variable" name="variable">
-              <option>x</option><option>y</option><option>z</option><option>t</option>
+          <p id="input-help" class="input-help">Linear or quadratic equations in any letter, a–z or A–Z. Use ^ for powers, and 2*e for 2 times e.</p>
+
+          <details id="calculation-options" class="calculation-options">
+            <summary>Calculation: <span id="calculation-label">Solve an equation</span></summary>
+            <label for="operation">What would you like to do?</label>
+            <select id="operation" name="operation">
+              <optgroup label="Equations">
+                <option value="equation_solve">Solve an equation</option>
+                <option value="polynomial_solve">Solve a polynomial (up to degree 8)</option>
+                <option value="system_solve">Solve a linear system</option>
+                <option value="exponential_solve">Solve an exponential equation</option>
+                <option value="trig_solve">Solve a trigonometric equation</option>
+              </optgroup>
+              <optgroup label="Calculus">
+                <option value="differentiate">Differentiate</option>
+                <option value="integrate">Integrate</option>
+                <option value="limit">Find a limit</option>
+                <option value="ode_solve">Solve a first-order differential equation</option>
+              </optgroup>
+              <optgroup label="Expressions">
+                <option value="log_expand">Expand logarithms</option>
+                <option value="log_condense">Condense logarithms</option>
+                <option value="trig_simplify">Simplify a trigonometric identity</option>
+                <option value="graph">Graph a function</option>
+              </optgroup>
+              <optgroup label="Matrices">
+                <option value="matrix_determinant">Find a determinant</option>
+                <option value="matrix_rref">Row reduce a matrix</option>
+                <option value="matrix_inverse">Invert a matrix</option>
+              </optgroup>
             </select>
+          <div id="variable-field" class="operation-field" hidden>
+            <label for="variable">Variable (leave blank to detect it)</label>
+            <input id="variable" name="variable" type="text" maxlength="1" pattern="[a-zA-Z]" placeholder="Auto" autocomplete="off" spellcheck="false">
           </div>
           <div id="order-field" class="operation-field optional-field" hidden>
             <label for="order">Derivative order</label>
@@ -98,13 +118,13 @@ x - y = 1</textarea>
           <div id="bounds-field" class="operation-field optional-field" hidden>
             <label for="lower">Bounds (leave both blank for an indefinite integral)</label>
             <div class="bounds-row">
-              <input id="lower" type="text" placeholder="Lower bound">
-              <input id="upper" type="text" placeholder="Upper bound">
+              <input id="lower" type="text" placeholder="Lower bound" aria-label="Lower bound">
+              <input id="upper" type="text" placeholder="Upper bound" aria-label="Upper bound">
             </div>
           </div>
           <div id="graph-fields" class="operation-field optional-field" hidden>
-            <label for="graph-range">Graph x-range</label>
-            <div class="bounds-row" id="graph-range">
+            <p id="graph-range-label" class="field-label">Graph x-range</p>
+            <div class="bounds-row" role="group" aria-labelledby="graph-range-label">
               <input id="x-min" type="number" value="-10" min="-1000" max="1000" step="any" aria-label="Minimum x">
               <input id="x-max" type="number" value="10" min="-1000" max="1000" step="any" aria-label="Maximum x">
             </div>
@@ -117,7 +137,7 @@ x - y = 1</textarea>
               Include derivative samples
             </label>
           </div>
-          <p id="input-help" class="input-help">Try <code>2x + 3 = 7</code> or <code>x^2 + 4 = 0</code>.</p>
+          </details>
           <div class="submit-row">
             <button type="submit">
               <span>Calculate</span>
@@ -131,12 +151,15 @@ x - y = 1</textarea>
         <section id="results" class="results" aria-live="polite" hidden>
           <div class="result-heading">
             <div>
-              <p class="eyebrow">Solution</p>
+              <p class="result-label">Result</p>
               <h2 id="result-title"></h2>
             </div>
             <span id="degree-badge" class="degree-badge"></span>
           </div>
-          <ol id="steps" class="steps"></ol>
+          <details id="working-details" class="working-details">
+            <summary>Show working</summary>
+            <ol id="steps" class="steps"></ol>
+          </details>
           <section id="graph-view" class="graph-view" aria-label="Interactive function graph" hidden>
             <div class="graph-toggles">
               <label><input id="toggle-roots" type="checkbox" checked> Roots</label>
@@ -157,8 +180,8 @@ x - y = 1</textarea>
       </section>
 
       <footer class="page-footer">
-        <span>Equations · calculus · graphing · matrices</span>
-        <span>Runs locally in Docker</span>
+        <span>Equations, calculus, graphs and matrices</span>
+        <span>Local recognition. No cloud OCR.</span>
       </footer>
     </main>
   </body>
