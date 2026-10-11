@@ -1,0 +1,30 @@
+name: Task
+description: Track follow-up work, a refactor, docs or maintenance.
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What needs to be done?
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Relevant files, behaviour and constraints.
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Checklist
+      value: |
+        - [ ] Add task
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Blockers or related issues and pull requests.

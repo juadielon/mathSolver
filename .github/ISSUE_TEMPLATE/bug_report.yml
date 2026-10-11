@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a wrong answer, an error or broken behaviour.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report.
+        A short, specific title helps, such as "E is ignored as a variable when simplifying trig".
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What went wrong, and why does it matter?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Calculation or answer
+        - Input (Type, Write or Upload)
+        - Graph
+        - API
+        - Docker or set-up
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the calculation, the exact input and any variable you chose.
+      placeholder: |
+        1. Choose "Simplify trig"
+        2. Type sin(E)^2 + cos(E)^2 and set the variable to E
+        3. Select Solve
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Paste the answer or error message shown.
+    validations:
+      required: true
+  - type: textarea
+    id: request
+    attributes:
+      label: API request or logs
+      description: Optional. The request body, response, or `docker compose logs` output.
+      render: shell
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, operating system and commit or branch.
+      placeholder: Firefox 131, Windows 11, main at abc1234
