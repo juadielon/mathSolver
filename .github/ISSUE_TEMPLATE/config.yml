@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap
+    url: https://github.com/juadielon/mathSolver/blob/main/ROADMAP.md
+    about: Check planned work before suggesting a feature.
+  - name: Variable rules
+    url: https://github.com/juadielon/mathSolver/blob/main/docs/api-variables.md
+    about: How single-letter variables, pi and E are handled.
